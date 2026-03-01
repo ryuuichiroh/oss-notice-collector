@@ -86,58 +86,27 @@ java -jar notice-collector.jar --config config.yaml --deps-file deps.txt
 
 ## 設定ファイル（YAML）
 
+最小構成の例:
+
 ```yaml
 project:
   path: "."                    # プロジェクトのルートパス
-  buildTool: "auto"            # auto / maven / gradle
-  maven:
-    scopes:
-      - "compile"
-      - "runtime"
-  gradle:
-    configurations:
-      - "runtimeClasspath"
-
 output:
-  directory: "output"                          # 出力先ディレクトリ
-  aggregatedFile: "THIRD-PARTY-NOTICES.txt"    # 集約 NOTICE ファイル名
-  reportFile: "collection-report.json"         # JSON レポートファイル名
-
-github:
-  tokenEnv: "GITHUB_TOKEN"    # GitHub トークンの環境変数名
-
-# 社内リポジトリ（任意）
-repositories:
-  - name: "internal-repo"
-    url: "https://repo.example.com/maven2"
-    type: "maven"
-    auth:
-      type: "basic"
-      usernameEnv: "REPO_USER"
-      passwordEnv: "REPO_PASS"
-
-# 特定の依存関係の NOTICE を手動指定（任意）
-overrides:
-  - groupId: "com.example"
-    artifactId: "my-lib"
-    version: "1.0.0"
-    noticePath: "./notices/my-lib-NOTICE"
-  - groupId: "log4j"
-    artifactId: "log4j"
-    spdxId: "Apache-2.0"
-    noticeUrl: "https://github.com/apache/logging-log4j1/archive/refs/tags/v${underscored_version}.tar.gz"
-  - groupId: "com.mysql"
-    artifactId: "mysql-connector-j"
-    spdxId: "Apache-2.0"
-    noticeUrl: "https://github.com/mysql/mysql-connector-j/archive/refs/tags/${version}.tar.gz"
-
-# 外部定義ファイル（任意）
-externalDefinitions:
-  licenseMappings: "license-mappings.yaml"
-  noticePatterns: "notice-patterns.yaml"
+  directory: "output"          # 出力先ディレクトリ
 ```
 
-記載のない項目にはデフォルト値が適用されます。
+主要な設定項目:
+
+| セクション | 説明 | 必須 |
+|---|---|---|
+| `project` | プロジェクトパスとビルドツール設定 | ○ |
+| `output` | 出力先ディレクトリとファイル名 | ○ |
+| `github` | GitHub API トークン設定 | × |
+| `repositories` | 社内リポジトリ設定 | × |
+| `overrides` | 特定依存関係の NOTICE/ライセンス上書き | × |
+| `externalDefinitions` | 外部定義ファイル（ライセンスマッピングなど） | × |
+
+詳細な設定方法は [設定ファイル詳細ガイド](docs/configuration.md) を参照してください。
 
 ## 出力
 
