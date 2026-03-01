@@ -1,0 +1,150 @@
+# OSS NOTICE Collector
+
+Java プロジェクトが利用する OSS の NOTICE ファイルを自動収集する CLI ツールです。
+Maven / Gradle プロジェクトの依存関係を解析し、Apache License 2.0 の OSS を対象に NOTICE ファイルを検索・取得・保存します。
+
+## 必要環境
+
+- Java 17 以上
+- Maven 3.6 以上（ビルド用）
+- Maven または Gradle（対象プロジェクトの依存関係解析用）
+
+## ビルド
+
+```bash
+cd oss-notice-collector
+mvn package -DskipTests
+```
+
+`target/notice-collector.jar` が生成されます。
+
+## 使い方
+
+### 基本
+
+```bash
+java -jar notice-collector.jar --config config.yaml
+```
+
+### CLI オプション
+
+| オプション | 短縮 | 説明 |
+|---|---|---|
+| `--config <path>` | `-c` | YAML 設定ファイルのパス |
+| `--build-tool <type>` | `-b` | ビルドツールを指定（`maven`, `gradle`, `auto`） |
+| `--deps-file <path>` | `-d` | 依存関係リストファイルのパス（`groupId:artifactId:version` 形式、1行1件） |
+| `--help` | `-h` | ヘルプを表示 |
+| `--version` | `-V` | バージョンを表示 |
+
+### 例
+
+```bash
+# Maven プロジェクトを自動検出して実行
+java -jar notice-collector.jar --config config.yaml
+
+# ビルドツールを明示的に指定
+java -jar notice-collector.jar --config config.yaml --build-tool maven
+
+# テキストファイルで依存関係を指定（ビルドツール不要）
+java -jar notice-collector.jar --config config.yaml --deps-file deps.txt
+```
+
+## 設定ファイル（YAML）
+
+```yaml
+project:
+  path: "."                    # プロジェクトのルートパス
+  buildTool: "auto"            # auto / maven / gradle
+  maven:
+    scopes:
+      - "compile"
+      - "runtime"
+  gradle:
+    configurations:
+      - "runtimeClasspath"
+
+output:
+  directory: "output"                          # 出力先ディレクトリ
+  aggregatedFile: "THIRD-PARTY-NOTICES.txt"    # 集約 NOTICE ファイル名
+  reportFile: "collection-report.json"         # JSON レポートファイル名
+
+github:
+  tokenEnv: "GITHUB_TOKEN"    # GitHub トークンの環境変数名
+
+# 社内リポジトリ（任意）
+repositories:
+  - name: "internal-repo"
+    url: "https://repo.example.com/maven2"
+    type: "maven"
+    auth:
+      type: "basic"
+      usernameEnv: "REPO_USER"
+      passwordEnv: "REPO_PASS"
+
+# 特定の依存関係の NOTICE を手動指定（任意）
+overrides:
+  - groupId: "com.example"
+    artifactId: "my-lib"
+    version: "1.0.0"
+    noticePath: "./notices/my-lib-NOTICE"
+  - groupId: "log4j"
+    artifactId: "log4j"
+    spdxId: "Apache-2.0"
+    noticeUrl: "https://github.com/apache/logging-log4j1/archive/refs/tags/v${underscored_version}.tar.gz"
+  - groupId: "com.mysql"
+    artifactId: "mysql-connector-j"
+    spdxId: "Apache-2.0"
+    noticeUrl: "https://github.com/mysql/mysql-connector-j/archive/refs/tags/${version}.tar.gz"
+
+# 外部定義ファイル（任意）
+externalDefinitions:
+  licenseMappings: "license-mappings.yaml"
+  noticePatterns: "notice-patterns.yaml"
+```
+
+記載のない項目にはデフォルト値が適用されます。
+
+## 出力
+
+実行後、以下のファイルが生成されます。
+
+| ファイル | 内容 |
+|---|---|
+| `output/notices/{groupId}/{artifactId}/{version}/NOTICE` | 依存関係ごとの NOTICE ファイル |
+| `output/collection-report.json` | 収集結果の JSON レポート（サマリ＋詳細） |
+| `output/THIRD-PARTY-NOTICES.txt` | 全 NOTICE を連結した集約ファイル |
+
+## NOTICE 検索の優先順位
+
+NOTICE ファイルは以下の順で検索され、見つかった時点で終了します。
+
+1. ユーザ指定（`overrides` で `noticePath` / `noticeUrl` を指定）
+   - `noticeUrl` では以下のバージョンプレースホルダーが使用可能:
+     - `${version}` - バージョンをそのまま置換 (例: 1.2.3)
+     - `${underscored_version}` - ドットをアンダースコアに置換 (例: 1_2_3)
+     - `${version_major}` - メジャーバージョンのみ (例: 1)
+     - `${version_minor}` - メジャー.マイナーバージョン (例: 1.2)
+2. ローカルキャッシュ（Maven ローカルリポジトリ / Gradle キャッシュの JAR 内）
+3. Maven Central（ソース JAR をダウンロードして抽出）
+4. 社内プライベートリポジトリ
+5. Apache Archive
+6. GitHub リポジトリ（`<scm>` タグから URL を取得し GitHub API で検索）
+7. ユーザ指定ソースコードリポジトリ（JGit でクローン）
+
+## 環境変数
+
+| 変数名 | 用途 |
+|---|---|
+| `GITHUB_TOKEN` | GitHub API アクセス用トークン（設定ファイルの `github.tokenEnv` で変更可） |
+
+社内リポジトリの認証情報も環境変数で管理します（設定ファイルの `auth` セクション参照）。
+
+## ライセンス
+
+本ツールは Apache License 2.0 の OSS のみを NOTICE 収集対象とします。
+ライセンス名の表記揺れは組み込みマッピングで自動的に SPDX 識別子に正規化されます。
+`license-mappings.yaml` でマッピングの追加・上書きが可能です。
+
+## 既知の改善項目
+
+詳細な修正方法は [IMPROVEMENT.md](./IMPROVEMENTS.md) を参照してください。
