@@ -246,7 +246,7 @@
                                     </excludes>
                                 </filter>
                             </filters>
-                            <finalName>notice-collector</finalName>
+                            <finalName>oss-notice-collector</finalName>
                         </configuration>
                     </execution>
                 </executions>

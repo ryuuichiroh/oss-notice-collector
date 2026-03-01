@@ -1,0 +1,5 @@
+project:
+  path: "examples/spring-app-gradle"
+  buildTool: "gradle"
+output:
+  directory: "examples/spring-app-gradle/output"

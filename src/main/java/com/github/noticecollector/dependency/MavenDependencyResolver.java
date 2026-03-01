@@ -87,6 +87,38 @@ public class MavenDependencyResolver implements DependencyResolver {
     }
   }
 
+  /**
+   * プロジェクトディレクトリに Maven Wrapper が存在する場合はそちらを優先し、
+   * 存在しない場合は PATH 上の {@code mvn} コマンドにフォールバックする。
+   *
+   * @param projectPath プロジェクトディレクトリ
+   * @return 使用する Maven コマンドのパスまたは名前
+   */
+  String resolveMavenCommand(Path projectPath) {
+    // Windows: mvnw.cmd を優先
+    if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
+      Path mvnwCmd = projectPath.resolve("mvnw.cmd");
+      if (Files.exists(mvnwCmd)) {
+        LOG.debug("Maven Wrapper (cmd) を使用します: {}", mvnwCmd);
+        return mvnwCmd.toAbsolutePath().toString();
+      }
+      // Wrapper が見つからない場合は PATH 上の mvn.cmd にフォールバック
+      LOG.debug("Maven Wrapper が見つかりません。PATH 上の mvn.cmd を使用します");
+      return "mvn.cmd";
+    }
+
+    // Unix / macOS: mvnw を優先
+    Path mvnw = projectPath.resolve("mvnw");
+    if (Files.exists(mvnw)) {
+      LOG.debug("Maven Wrapper を使用します: {}", mvnw);
+      return mvnw.toAbsolutePath().toString();
+    }
+
+    // Wrapper が見つからない場合は PATH 上の mvn にフォールバック
+    LOG.debug("Maven Wrapper が見つかりません。PATH 上の mvn を使用します");
+    return "mvn";
+  }
+
   private void executeMvnDependencyList(Path projectPath, Path outputFile, List<String> scopes)
       throws DependencyResolutionException {
     String includeScope = scopes.stream()
@@ -104,9 +136,7 @@ public class MavenDependencyResolver implements DependencyResolver {
         .orElse("runtime");
 
     List<String> command = new ArrayList<>();
-    // Windows では mvn.cmd を使用
-    String mvnCommand = System.getProperty("os.name").toLowerCase().contains("win") ? "mvn.cmd" : "mvn";
-    command.add(mvnCommand);
+    command.add(resolveMavenCommand(projectPath));
     command.add("dependency:list");
     command.add("-DoutputFile=" + outputFile.toAbsolutePath());
     command.add("-DincludeScope=" + includeScope);

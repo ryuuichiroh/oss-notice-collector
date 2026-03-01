@@ -41,7 +41,7 @@ output:
 EOF
 
 # 4. 実行
-java -jar target/notice-collector.jar --config config.yaml
+java -jar target/oss-notice-collector.jar --config config.yaml
 ```
 
 ## ビルド
@@ -51,7 +51,7 @@ cd oss-notice-collector
 mvn package -DskipTests
 ```
 
-`target/notice-collector.jar` が生成されます。
+`target/oss-notice-collector.jar` が生成されます。
 
 ## 使い方
 

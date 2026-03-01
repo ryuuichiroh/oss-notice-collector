@@ -1,0 +1,5 @@
+project:
+  path: "examples/spring-app-mvn"
+  buildTool: "maven"
+output:
+  directory: "examples/spring-app-mvn/output"

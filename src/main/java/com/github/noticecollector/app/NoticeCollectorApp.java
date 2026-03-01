@@ -45,7 +45,7 @@ import picocli.CommandLine.Option;
  * フィルタリング → NOTICE 収集 → 結果出力 の順で処理を実行する。
  */
 @Command(
-    name = "notice-collector",
+    name = "oss-notice-collector",
     mixinStandardHelpOptions = true,
     version = "1.0.0",
     description = "OSS 依存関係の NOTICE ファイルを自動収集するツール")

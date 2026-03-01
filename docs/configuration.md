@@ -161,7 +161,7 @@ repositories:
 ```bash
 export REPO_USER=myuser
 export REPO_PASS=mypassword
-java -jar notice-collector.jar --config config.yaml
+java -jar oss-notice-collector.jar --config config.yaml
 ```
 
 ## overrides セクション

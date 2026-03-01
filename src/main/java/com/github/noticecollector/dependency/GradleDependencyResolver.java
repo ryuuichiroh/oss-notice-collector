@@ -110,6 +110,9 @@ public class GradleDependencyResolver implements DependencyResolver {
         LOG.debug("Gradle Wrapper (bat) を使用します: {}", gradlewBat);
         return gradlewBat.toAbsolutePath().toString();
       }
+      // Wrapper が見つからない場合は PATH 上の gradle にフォールバック
+      LOG.debug("Gradle Wrapper が見つかりません。PATH 上の gradle を使用します");
+      return "gradle";
     }
 
     // Unix / macOS: gradlew を優先
