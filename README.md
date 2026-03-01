@@ -1,13 +1,48 @@
 # OSS NOTICE Collector
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)](https://www.oracle.com/java/)
+
 Java プロジェクトが利用する OSS の NOTICE ファイルを自動収集する CLI ツールです。
 Maven / Gradle プロジェクトの依存関係を解析し、Apache License 2.0 の OSS を対象に NOTICE ファイルを検索・取得・保存します。
+
+## Features
+
+- 🔍 Maven / Gradle プロジェクトの依存関係を自動解析
+- 📄 Apache License 2.0 の OSS から NOTICE ファイルを自動収集
+- 🌐 複数のソースから検索（Maven Central、GitHub、Apache Archive など）
+- 📦 収集した NOTICE を1つのファイルに集約
+- ⚙️ YAML 設定ファイルで柔軟にカスタマイズ可能
+- 🔐 社内プライベートリポジトリにも対応
+- 📊 JSON 形式の詳細レポート出力
 
 ## 必要環境
 
 - Java 17 以上
 - Maven 3.6 以上（ビルド用）
 - Maven または Gradle（対象プロジェクトの依存関係解析用）
+
+## Quick Start
+
+```bash
+# 1. リポジトリをクローン
+git clone https://github.com/ryuuichiroh/oss-notice-collector.git
+cd oss-notice-collector
+
+# 2. ビルド
+mvn package -DskipTests
+
+# 3. サンプル設定ファイルを作成
+cat > config.yaml << 'EOF'
+project:
+  path: "/path/to/your/project"
+output:
+  directory: "output"
+EOF
+
+# 4. 実行
+java -jar target/notice-collector.jar --config config.yaml
+```
 
 ## ビルド
 
@@ -147,4 +182,25 @@ NOTICE ファイルは以下の順で検索され、見つかった時点で終�
 
 ## 既知の改善項目
 
-詳細な修正方法は [IMPROVEMENT.md](./IMPROVEMENTS.md) を参照してください。
+詳細な修正方法は [IMPROVEMENTS.md](./IMPROVEMENTS.md) を参照してください。
+
+## Contributing
+
+コントリビューションを歓迎します！
+
+1. このリポジトリをフォーク
+2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
+
+バグ報告や機能要望は [Issues](https://github.com/ryuuichiroh/oss-notice-collector/issues) からお願いします。
+
+## Links
+
+- [Issues](https://github.com/ryuuichiroh/oss-notice-collector/issues) - バグ報告・機能要望
+- [Releases](https://github.com/ryuuichiroh/oss-notice-collector/releases) - リリース履歴
+
+## License
+
+このプロジェクトは Apache License 2.0 の下でライセンスされています。詳細は [LICENSE](LICENSE) ファイルを参照してください。
