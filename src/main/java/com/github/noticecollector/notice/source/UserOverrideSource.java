@@ -1,5 +1,6 @@
 package com.github.noticecollector.notice.source;
 
+import com.github.noticecollector.cache.ArchiveCache;
 import com.github.noticecollector.config.NoticeCollectorConfig;
 import com.github.noticecollector.http.HttpClientWrapper;
 import com.github.noticecollector.http.HttpRequestException;
@@ -32,6 +33,7 @@ public class UserOverrideSource implements NoticeSource {
   private final List<NoticeCollectorConfig.OverrideConfig> overrides;
   private final HttpClientWrapper httpClient;
   private final ArchiveNoticeExtractor archiveExtractor;
+  private final ArchiveCache archiveCache;
 
   /**
    * UserOverrideSource を構築する。
@@ -40,9 +42,25 @@ public class UserOverrideSource implements NoticeSource {
    * @param httpClient HTTP 通信ラッパー
    */
   public UserOverrideSource(NoticeCollectorConfig config, HttpClientWrapper httpClient) {
+    this(config, httpClient, null);
+  }
+
+  /**
+   * UserOverrideSource を構築する（ArchiveCache 対応）。
+   *
+   * @param config 設定オブジェクト
+   * @param httpClient HTTP 通信ラッパー
+   * @param archiveCache アーカイブキャッシュ（nullable）
+   */
+  @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "ArchiveCache is intentionally shared across components")
+  public UserOverrideSource(NoticeCollectorConfig config, HttpClientWrapper httpClient,
+      ArchiveCache archiveCache) {
     this.overrides = config.getOverrides();
     this.httpClient = httpClient;
     this.archiveExtractor = new ArchiveNoticeExtractor();
+    this.archiveCache = archiveCache;
   }
 
   @Override
@@ -212,15 +230,32 @@ public class UserOverrideSource implements NoticeSource {
   /** アーカイブファイルをダウンロードして NOTICE を抽出する。 */
   private NoticeSearchResult downloadAndExtractArchive(String archiveUrl,
       LicensedDependency dependency, List<String> patterns) {
+    String cacheKey = dependency.dependency().toGav() + ":noticeUrl";
     Path tempFile = null;
-    try {
-      // 一時ファイルにダウンロード
-      String suffix = determineTempFileSuffix(archiveUrl);
-      tempFile = Files.createTempFile("notice-archive-", suffix);
-      httpClient.downloadToFile(archiveUrl, tempFile);
+    boolean shouldDeleteTempFile = true;
 
-      LOG.debug("アーカイブをダウンロードしました: {} -> {} ({})",
-          archiveUrl, tempFile, dependency.dependency().toGav());
+    try {
+      // キャッシュを確認
+      if (archiveCache != null && archiveCache.contains(cacheKey)) {
+        tempFile = archiveCache.get(cacheKey);
+        shouldDeleteTempFile = false;
+        LOG.debug("noticeUrl アーカイブのキャッシュを使用: {} ({})",
+            tempFile, dependency.dependency().toGav());
+      } else {
+        // 一時ファイルにダウンロード
+        String suffix = determineTempFileSuffix(archiveUrl);
+        tempFile = Files.createTempFile("notice-archive-", suffix);
+        httpClient.downloadToFile(archiveUrl, tempFile);
+
+        LOG.debug("アーカイブをダウンロードしました: {} -> {} ({})",
+            archiveUrl, tempFile, dependency.dependency().toGav());
+
+        // キャッシュに登録（LicenseIdentifier で既にダウンロード済みの可能性がある）
+        if (archiveCache != null) {
+          archiveCache.put(cacheKey, tempFile);
+          shouldDeleteTempFile = false;
+        }
+      }
 
       // アーカイブから NOTICE を抽出
       return extractFromArchive(tempFile, archiveUrl, dependency, patterns);
@@ -236,7 +271,7 @@ public class UserOverrideSource implements NoticeSource {
       return new NoticeSearchResult(SearchOutcome.ERROR, null, archiveUrl,
           "一時ファイル作成エラー: " + e.getMessage());
     } finally {
-      if (tempFile != null) {
+      if (shouldDeleteTempFile && tempFile != null) {
         deleteTempFile(tempFile);
       }
     }

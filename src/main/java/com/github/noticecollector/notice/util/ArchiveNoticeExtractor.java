@@ -52,7 +52,7 @@ public class ArchiveNoticeExtractor {
     String fileName = fileNamePath.toString().toLowerCase();
     if (fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz")) {
       return extractFromTarGz(archivePath, patterns);
-    } else if (fileName.endsWith(".zip")) {
+    } else if (fileName.endsWith(".zip") || fileName.endsWith(".jar")) {
       return extractFromZip(archivePath, patterns);
     }
 

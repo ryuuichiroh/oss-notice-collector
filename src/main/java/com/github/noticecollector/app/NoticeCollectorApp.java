@@ -1,5 +1,6 @@
 package com.github.noticecollector.app;
 
+import com.github.noticecollector.cache.ArchiveCache;
 import com.github.noticecollector.config.ConfigLoader;
 import com.github.noticecollector.config.LicenseMappingLoader;
 import com.github.noticecollector.config.NoticeCollectorConfig;
@@ -90,9 +91,11 @@ public class NoticeCollectorApp implements Callable<Integer> {
       }
       System.out.printf("依存関係を %d 件解析しました。%n", dependencies.size());
 
-      // 3. ライセンス特定
+      // 3. ライセンス特定（ArchiveCache を使用）
+      ArchiveCache archiveCache = new ArchiveCache();
       LicenseMapping licenseMapping = loadLicenseMapping(config);
-      LicenseIdentifier licenseIdentifier = createLicenseIdentifier(config, licenseMapping);
+      LicenseIdentifier licenseIdentifier =
+          createLicenseIdentifier(config, licenseMapping, archiveCache);
       List<LicensedDependency> licensedDeps = licenseIdentifier.identifyLicenses(dependencies);
 
       // 4. Apache-2.0 フィルタリング
@@ -100,12 +103,16 @@ public class NoticeCollectorApp implements Callable<Integer> {
           licensedDeps.stream().filter(LicensedDependency::isApache2).toList();
       List<LicensedDependency> unknownDeps =
           licensedDeps.stream().filter(LicensedDependency::isUnknown).toList();
+      List<LicensedDependency> otherLicenseDeps =
+          licensedDeps.stream()
+              .filter(dep -> !dep.isApache2() && !dep.isUnknown())
+              .toList();
 
       System.out.printf(
           "ライセンス特定完了: Apache-2.0 = %d 件, UNKNOWN = %d 件, その他 = %d 件%n",
           apache2Deps.size(),
           unknownDeps.size(),
-          licensedDeps.size() - apache2Deps.size() - unknownDeps.size());
+          otherLicenseDeps.size());
 
       // 5. NOTICE 収集（Apache-2.0 + UNKNOWN_LICENSE を対象）
       List<LicensedDependency> collectTargets = new ArrayList<>(apache2Deps);
@@ -113,20 +120,41 @@ public class NoticeCollectorApp implements Callable<Integer> {
 
       List<CollectionResult> results;
       try (HttpClientWrapper httpClient = new HttpClientWrapper(config)) {
-        NoticeCollector noticeCollector = createNoticeCollector(config, httpClient);
+        NoticeCollector noticeCollector = createNoticeCollector(config, httpClient, archiveCache);
         results = noticeCollector.collectNotices(collectTargets);
       }
 
-      // 6. 結果出力
-      OutputGenerator outputGenerator = new OutputGenerator(config);
-      outputGenerator.generateOutput(results, licensedDeps, config);
+      // 6. その他のライセンスに対する CollectionResult を追加
+      List<CollectionResult> otherLicenseResults = otherLicenseDeps.stream()
+          .map(dep -> new CollectionResult(
+              dep.dependency(),
+              dep.spdxId(),
+              CollectionStatus.NOT_APACHE_2_0,
+              null,
+              null,
+              null,
+              null,
+              "Apache-2.0 以外のライセンス (" + dep.spdxId() + ") のため NOTICE 収集対象外"))
+          .toList();
+      
+      // 全ての結果を統合
+      List<CollectionResult> allResults = new ArrayList<>(results);
+      allResults.addAll(otherLicenseResults);
 
-      // 7. サマリ表示
-      printSummary(licensedDeps, results);
+      // 7. アーカイブキャッシュをクリア
+      archiveCache.clear();
+      LOG.debug("アーカイブキャッシュをクリアしました");
+
+      // 8. 結果出力
+      OutputGenerator outputGenerator = new OutputGenerator(config);
+      outputGenerator.generateOutput(allResults, licensedDeps, config);
+
+      // 9. サマリ表示
+      printSummary(licensedDeps, allResults);
 
       // FAILED がある場合は終了コード 1
       boolean hasFailed =
-          results.stream().anyMatch(r -> r.status() == CollectionStatus.FAILED);
+          allResults.stream().anyMatch(r -> r.status() == CollectionStatus.FAILED);
       return hasFailed ? 1 : 0;
 
     } catch (Exception e) {
@@ -225,7 +253,7 @@ public class NoticeCollectorApp implements Callable<Integer> {
 
   /** LicenseIdentifier を構築する。 */
   private LicenseIdentifier createLicenseIdentifier(
-      NoticeCollectorConfig config, LicenseMapping licenseMapping) {
+      NoticeCollectorConfig config, LicenseMapping licenseMapping, ArchiveCache archiveCache) {
     HttpClientWrapper httpClient = new HttpClientWrapper(config);
 
     // pom.xml 取得: Maven Central から HTTP で取得
@@ -251,7 +279,8 @@ public class NoticeCollectorApp implements Callable<Integer> {
 
     // GitHub ライセンス取得は null（NoticeCollector の GitHubSource で対応）
     return new LicenseIdentifier(licenseMapping, pomFetcher, jarLocator, null, config,
-        httpClient, new com.github.noticecollector.notice.util.ArchiveNoticeExtractor());
+        httpClient, new com.github.noticecollector.notice.util.ArchiveNoticeExtractor(),
+        archiveCache);
   }
 
   /** NOTICE 検索パターンを読み込む。 */
@@ -271,12 +300,12 @@ public class NoticeCollectorApp implements Callable<Integer> {
 
   /** NoticeCollector を構築する（7段階の NoticeSource を登録）。 */
   private NoticeCollector createNoticeCollector(
-      NoticeCollectorConfig config, HttpClientWrapper httpClient)
+      NoticeCollectorConfig config, HttpClientWrapper httpClient, ArchiveCache archiveCache)
       throws NoticePatternLoader.NoticePatternLoadException {
     List<String> patterns = loadNoticePatterns(config);
 
     List<NoticeSource> sources = new ArrayList<>();
-    sources.add(new UserOverrideSource(config, httpClient));
+    sources.add(new UserOverrideSource(config, httpClient, archiveCache));
     sources.add(new LocalCacheSource(config));
     sources.add(new MavenCentralSource(httpClient));
     sources.add(new PrivateRepoSource(config, httpClient));

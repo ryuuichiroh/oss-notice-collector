@@ -18,8 +18,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Jackson による JSON レポート（{@code collection-report.json}）を生成する。
  *
- * <p>サマリ情報（総依存数、Apache-2.0 数、各ステータス数）と、Apache-2.0 および UNKNOWN_LICENSE
- * の依存関係の収集結果を含む。
+ * <p>サマリ情報（総依存数、Apache-2.0 数、各ステータス数）と、全ての依存関係の
+ * 収集結果を含む（Apache-2.0、UNKNOWN_LICENSE、その他のライセンスを含む）。
  */
 public class ReportGenerator {
 
@@ -45,7 +45,7 @@ public class ReportGenerator {
   /**
    * JSON レポートを生成してファイルに書き出す。
    *
-   * @param results Apache-2.0 および UNKNOWN_LICENSE の収集結果リスト
+   * @param results 全依存関係の収集結果リスト（Apache-2.0、UNKNOWN_LICENSE、その他のライセンスを含む）
    * @param allDependencies 全依存関係リスト（サマリ集計用）
    * @throws IOException ファイル書き込みに失敗した場合
    */
@@ -84,6 +84,8 @@ public class ReportGenerator {
         results.stream().filter(r -> r.status() == CollectionStatus.FAILED).count();
     long unknownLicenseCount =
         results.stream().filter(r -> r.status() == CollectionStatus.UNKNOWN_LICENSE).count();
+    long notApache2Count =
+        results.stream().filter(r -> r.status() == CollectionStatus.NOT_APACHE_2_0).count();
 
     return new Summary(
         totalDependencies,
@@ -91,7 +93,8 @@ public class ReportGenerator {
         (int) successCount,
         (int) notRequiredCount,
         (int) failedCount,
-        (int) unknownLicenseCount);
+        (int) unknownLicenseCount,
+        (int) notApache2Count);
   }
 
   private static ResultEntry toEntry(CollectionResult result) {
@@ -127,7 +130,8 @@ public class ReportGenerator {
       @JsonProperty("successCount") int successCount,
       @JsonProperty("notRequiredCount") int notRequiredCount,
       @JsonProperty("failedCount") int failedCount,
-      @JsonProperty("unknownLicenseCount") int unknownLicenseCount) {}
+      @JsonProperty("unknownLicenseCount") int unknownLicenseCount,
+      @JsonProperty("notApache2Count") int notApache2Count) {}
 
   /** 個別の収集結果エントリ。 */
   @JsonInclude(JsonInclude.Include.NON_NULL)

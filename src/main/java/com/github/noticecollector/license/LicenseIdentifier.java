@@ -1,5 +1,6 @@
 package com.github.noticecollector.license;
 
+import com.github.noticecollector.cache.ArchiveCache;
 import com.github.noticecollector.config.NoticeCollectorConfig;
 import com.github.noticecollector.dependency.Dependency;
 import com.github.noticecollector.http.HttpClientWrapper;
@@ -40,8 +41,11 @@ public class LicenseIdentifier {
 
   private static final String LICENSE_SOURCE_POM = "POM";
   private static final String LICENSE_SOURCE_JAR = "JAR_META_INF";
+  private static final String LICENSE_SOURCE_SOURCES_JAR = "MAVEN_CENTRAL_SOURCES_JAR";
   private static final String LICENSE_SOURCE_GITHUB = "GITHUB_API";
   private static final String LICENSE_SOURCE_ARCHIVE = "ARCHIVE";
+
+  private static final String MAVEN_CENTRAL_BASE = "https://repo1.maven.org/maven2/";
 
   /** parent POM を辿る最大深度（無限ループ防止）。 */
   private static final int MAX_PARENT_DEPTH = 5;
@@ -52,7 +56,15 @@ public class LicenseIdentifier {
 
   /** アーカイブ内で検索する LICENSE ファイルパターン（優先順）。 */
   private static final List<String> ARCHIVE_LICENSE_PATTERNS =
-      List.of("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING", "COPYING.txt");
+      List.of(
+          "LICENSE",
+          "LICENSE.txt",
+          "LICENSE.md",
+          "META-INF/LICENSE",
+          "META-INF/LICENSE.txt",
+          "META-INF/LICENSE.md",
+          "COPYING",
+          "COPYING.txt");
 
   private final LicenseMapping licenseMapping;
   private final PomFetcher pomFetcher;
@@ -61,6 +73,7 @@ public class LicenseIdentifier {
   private final List<NoticeCollectorConfig.OverrideConfig> overrides;
   private final HttpClientWrapper httpClient;
   private final ArchiveNoticeExtractor archiveExtractor;
+  private final ArchiveCache archiveCache;
 
   /**
    * LicenseIdentifier を構築する。
@@ -99,6 +112,34 @@ public class LicenseIdentifier {
       NoticeCollectorConfig config,
       HttpClientWrapper httpClient,
       ArchiveNoticeExtractor archiveExtractor) {
+    this(licenseMapping, pomFetcher, jarLocator, githubFetcher, config, httpClient,
+        archiveExtractor, null);
+  }
+
+  /**
+   * LicenseIdentifier を構築する（ArchiveCache 対応）。
+   *
+   * @param licenseMapping ライセンス名→SPDX マッピング
+   * @param pomFetcher pom.xml 取得関数
+   * @param jarLocator ローカル JAR パス解決関数
+   * @param githubFetcher GitHub API ライセンス取得関数
+   * @param config 設定オブジェクト（overrides 取得用）
+   * @param httpClient HTTP クライアント（アーカイブダウンロード用、nullable）
+   * @param archiveExtractor アーカイブ抽出ユーティリティ（nullable）
+   * @param archiveCache アーカイブキャッシュ（nullable）
+   */
+  @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "ArchiveCache is intentionally shared across components")
+  public LicenseIdentifier(
+      LicenseMapping licenseMapping,
+      PomFetcher pomFetcher,
+      JarLocator jarLocator,
+      GitHubLicenseFetcher githubFetcher,
+      NoticeCollectorConfig config,
+      HttpClientWrapper httpClient,
+      ArchiveNoticeExtractor archiveExtractor,
+      ArchiveCache archiveCache) {
     this.licenseMapping = licenseMapping;
     this.pomFetcher = pomFetcher;
     this.jarLocator = jarLocator;
@@ -106,6 +147,7 @@ public class LicenseIdentifier {
     this.overrides = config != null ? config.getOverrides() : List.of();
     this.httpClient = httpClient;
     this.archiveExtractor = archiveExtractor;
+    this.archiveCache = archiveCache;
   }
 
   /**
@@ -151,13 +193,19 @@ public class LicenseIdentifier {
       return fromJar;
     }
 
-    // 優先順位 3: GitHub API
+    // 優先順位 3: Maven Central の sources.jar の LICENSE ファイル
+    LicensedDependency fromSourcesJar = identifyFromSourcesJar(dependency);
+    if (fromSourcesJar != null && !fromSourcesJar.isUnknown()) {
+      return fromSourcesJar;
+    }
+
+    // 優先順位 4: GitHub API
     LicensedDependency fromGithub = identifyFromGithub(dependency);
     if (fromGithub != null && !fromGithub.isUnknown()) {
       return fromGithub;
     }
 
-    // 優先順位 4: noticeUrl で指定されたアーカイブ内の LICENSE ファイル
+    // 優先順位 5: noticeUrl で指定されたアーカイブ内の LICENSE ファイル
     LicensedDependency fromArchive = identifyFromArchive(dependency);
     if (fromArchive != null && !fromArchive.isUnknown()) {
       return fromArchive;
@@ -332,6 +380,99 @@ public class LicenseIdentifier {
   }
 
   /**
+   * Maven Central の sources.jar の LICENSE ファイルからライセンスを特定する。
+   *
+   * <p>ローカル JAR に LICENSE ファイルが含まれていない場合のフォールバックとして、
+   * Maven Central から sources.jar をダウンロードして LICENSE ファイルを確認する。
+   *
+   * @param dependency 対象の依存関係
+   * @return ライセンス付き依存関係。特定できない場合は {@code null}
+   */
+  private LicensedDependency identifyFromSourcesJar(Dependency dependency) {
+    if (httpClient == null || archiveExtractor == null) {
+      return null;
+    }
+
+    String sourcesJarUrl = buildSourcesJarUrl(dependency);
+    String cacheKey = dependency.toGav() + ":sources";
+
+    Path tempFile = null;
+    boolean shouldDeleteTempFile = true;
+
+    try {
+      // キャッシュを確認
+      if (archiveCache != null && archiveCache.contains(cacheKey)) {
+        tempFile = archiveCache.get(cacheKey);
+        shouldDeleteTempFile = false;
+        logger.debug("sources.jar のキャッシュを使用: {} ({})", tempFile, dependency.toGav());
+      } else {
+        // ダウンロード
+        tempFile = Files.createTempFile("license-sources-", ".jar");
+        httpClient.downloadToFile(sourcesJarUrl, tempFile);
+        logger.debug("sources.jar をダウンロード: {} ({})", sourcesJarUrl, dependency.toGav());
+
+        // キャッシュに登録
+        if (archiveCache != null) {
+          archiveCache.put(cacheKey, tempFile);
+          shouldDeleteTempFile = false;
+        }
+      }
+
+      // LICENSE ファイルを検索
+      Optional<String> licenseContent =
+          archiveExtractor.extract(tempFile, ARCHIVE_LICENSE_PATTERNS);
+      if (licenseContent.isEmpty()) {
+        logger.debug("sources.jar に LICENSE ファイルが見つかりません: {} ({})",
+            sourcesJarUrl, dependency.toGav());
+        return null;
+      }
+
+      String spdxId = inferLicenseFromContent(licenseContent.get());
+      if (LicenseMapping.UNKNOWN_LICENSE.equals(spdxId)) {
+        logger.debug("sources.jar の LICENSE ファイルからライセンスを判定できません: {} ({})",
+            sourcesJarUrl, dependency.toGav());
+        return null;
+      }
+
+      logger.info("Maven Central の sources.jar からライセンスを特定しました: {} -> {} ({})",
+          dependency.toGav(), spdxId, sourcesJarUrl);
+      return new LicensedDependency(
+          dependency, spdxId, null, sourcesJarUrl, LICENSE_SOURCE_SOURCES_JAR);
+
+    } catch (HttpRequestException e) {
+      logger.debug("sources.jar のダウンロードに失敗: {} ({}) - {}",
+          sourcesJarUrl, dependency.toGav(), e.getMessage());
+      return null;
+    } catch (IOException e) {
+      logger.debug("sources.jar の処理に失敗: {} ({}) - {}",
+          sourcesJarUrl, dependency.toGav(), e.getMessage());
+      return null;
+    } finally {
+      if (shouldDeleteTempFile && tempFile != null) {
+        try {
+          Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+          logger.debug("一時ファイルの削除に失敗: {}", tempFile, e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Maven Central の sources.jar URL を構築する。
+   *
+   * <p>形式: {@code https://repo1.maven.org/maven2/{groupPath}/{artifactId}/{version}/{artifactId}-{version}-sources.jar}
+   */
+  private String buildSourcesJarUrl(Dependency dependency) {
+    String groupId = dependency.groupId();
+    String artifactId = dependency.artifactId();
+    String version = dependency.version();
+    String groupPath = groupId.replace('.', '/');
+    return String.format("%s%s/%s/%s/%s-%s-sources.jar",
+        MAVEN_CENTRAL_BASE, groupPath, artifactId, version, artifactId, version);
+  }
+
+  /**
    * GitHub API からリポジトリのライセンス情報を取得する。
    *
    * @return ライセンス付き依存関係。取得失敗時は {@code null}
@@ -385,11 +526,30 @@ public class LicenseIdentifier {
     }
 
     String noticeUrl = resolveVersionPlaceholders(override.getNoticeUrl(), dependency);
+    String cacheKey = dependency.toGav() + ":noticeUrl";
+
     Path tempFile = null;
+    boolean shouldDeleteTempFile = true;
+
     try {
-      String suffix = determineTempFileSuffix(noticeUrl);
-      tempFile = Files.createTempFile("license-archive-", suffix);
-      httpClient.downloadToFile(noticeUrl, tempFile);
+      // キャッシュを確認
+      if (archiveCache != null && archiveCache.contains(cacheKey)) {
+        tempFile = archiveCache.get(cacheKey);
+        shouldDeleteTempFile = false;
+        logger.debug("noticeUrl アーカイブのキャッシュを使用: {} ({})", tempFile, dependency.toGav());
+      } else {
+        // ダウンロード
+        String suffix = determineTempFileSuffix(noticeUrl);
+        tempFile = Files.createTempFile("license-archive-", suffix);
+        httpClient.downloadToFile(noticeUrl, tempFile);
+        logger.debug("noticeUrl アーカイブをダウンロード: {} ({})", noticeUrl, dependency.toGav());
+
+        // キャッシュに登録
+        if (archiveCache != null) {
+          archiveCache.put(cacheKey, tempFile);
+          shouldDeleteTempFile = false;
+        }
+      }
 
       Optional<String> licenseContent =
           archiveExtractor.extract(tempFile, ARCHIVE_LICENSE_PATTERNS);
@@ -419,7 +579,7 @@ public class LicenseIdentifier {
           noticeUrl, dependency.toGav(), e.getMessage());
       return null;
     } finally {
-      if (tempFile != null) {
+      if (shouldDeleteTempFile && tempFile != null) {
         try {
           Files.deleteIfExists(tempFile);
         } catch (IOException e) {
@@ -590,7 +750,8 @@ public class LicenseIdentifier {
     }
 
     // BSD Licenses
-    if (lower.contains("bsd") && lower.contains("redistribution and use")) {
+    // BSD という文字列がなくても、特徴的なフレーズで判定
+    if (lower.contains("redistribution and use in source and binary forms")) {
       if (lower.contains("neither the name")) {
         return "BSD-3-Clause";
       }
