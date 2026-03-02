@@ -64,24 +64,26 @@ public class UserOverrideSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     NoticeCollectorConfig.OverrideConfig override = findOverride(dependency);
     if (override == null) {
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "ユーザオーバーライド未設定");
     }
 
     // noticePath が指定されている場合、ローカルファイルから読み込む
     if (override.getNoticePath() != null && !override.getNoticePath().isBlank()) {
-      return readFromPath(override.getNoticePath(), dependency, patterns);
+      return readFromPath(override.getNoticePath(), dependency, noticePatterns, licensePatterns);
     }
 
     // noticeUrl が指定されている場合、HTTP で取得する
     if (override.getNoticeUrl() != null && !override.getNoticeUrl().isBlank()) {
-      return fetchFromUrl(override.getNoticeUrl(), dependency, patterns);
+      return fetchFromUrl(override.getNoticeUrl(), dependency, noticePatterns, licensePatterns);
     }
 
-    return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+    return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
         "オーバーライド設定に noticePath/noticeUrl が未指定");
   }
 
@@ -119,19 +121,19 @@ public class UserOverrideSource implements NoticeSource {
 
   /** ローカルファイルパスから NOTICE を読み込む。アーカイブファイルの場合は展開して抽出する。 */
   private NoticeSearchResult readFromPath(String noticePath, LicensedDependency dependency,
-      List<String> patterns) {
+      List<String> noticePatterns, List<String> licensePatterns) {
     Path path = Path.of(noticePath);
     if (!Files.exists(path)) {
       LOG.warn("ユーザ指定の NOTICE ファイルが見つかりません: {} ({})",
           noticePath, dependency.dependency().toGav());
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, noticePath,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, noticePath,
           "指定パスにファイルが存在しません: " + noticePath);
     }
 
     // アーカイブファイルかどうかを判定
     String lowerPath = noticePath.toLowerCase();
     if (lowerPath.endsWith(".zip") || lowerPath.endsWith(".tar.gz") || lowerPath.endsWith(".tgz")) {
-      return extractFromArchive(path, noticePath, dependency, patterns);
+      return extractFromArchive(path, noticePath, dependency, noticePatterns, licensePatterns);
     }
 
     // 通常のテキストファイルとして読み込む
@@ -139,18 +141,18 @@ public class UserOverrideSource implements NoticeSource {
       String content = Files.readString(path, StandardCharsets.UTF_8);
       LOG.info("ユーザ指定パスから NOTICE を取得: {} ({})",
           noticePath, dependency.dependency().toGav());
-      return new NoticeSearchResult(SearchOutcome.FOUND, content, noticePath, null);
+      return new NoticeSearchResult(SearchOutcome.FOUND, content, null, noticePath, null);
     } catch (IOException e) {
       LOG.error("ユーザ指定 NOTICE ファイルの読込に失敗: {} ({}) - {}",
           noticePath, dependency.dependency().toGav(), e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, noticePath,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, noticePath,
           "ファイル読込エラー: " + e.getMessage());
     }
   }
 
   /** URL から NOTICE を HTTP で取得する。アーカイブファイルの場合は展開して抽出する。 */
   private NoticeSearchResult fetchFromUrl(String noticeUrl, LicensedDependency dependency,
-      List<String> patterns) {
+      List<String> noticePatterns, List<String> licensePatterns) {
     // バージョン変数を置換
     String resolvedUrl = resolveVersionPlaceholders(noticeUrl, dependency);
     
@@ -160,7 +162,7 @@ public class UserOverrideSource implements NoticeSource {
         || lowerUrl.endsWith(".tgz");
 
     if (isArchive) {
-      return downloadAndExtractArchive(resolvedUrl, dependency, patterns);
+      return downloadAndExtractArchive(resolvedUrl, dependency, noticePatterns, licensePatterns);
     }
 
     // 通常のテキストファイルとして取得
@@ -168,11 +170,11 @@ public class UserOverrideSource implements NoticeSource {
       String content = httpClient.getString(resolvedUrl);
       LOG.info("ユーザ指定 URL から NOTICE を取得: {} ({})",
           resolvedUrl, dependency.dependency().toGav());
-      return new NoticeSearchResult(SearchOutcome.FOUND, content, resolvedUrl, null);
+      return new NoticeSearchResult(SearchOutcome.FOUND, content, null, resolvedUrl, null);
     } catch (HttpRequestException e) {
       LOG.error("ユーザ指定 URL からの NOTICE 取得に失敗: {} ({}) - {}",
           resolvedUrl, dependency.dependency().toGav(), e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, resolvedUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, resolvedUrl,
           "HTTP 取得エラー: " + e.getMessage());
     }
   }
@@ -227,9 +229,9 @@ public class UserOverrideSource implements NoticeSource {
     return result;
   }
 
-  /** アーカイブファイルをダウンロードして NOTICE を抽出する。 */
+  /** アーカイブファイルをダウンロードして NOTICE/LICENSE を抽出する。 */
   private NoticeSearchResult downloadAndExtractArchive(String archiveUrl,
-      LicensedDependency dependency, List<String> patterns) {
+      LicensedDependency dependency, List<String> noticePatterns, List<String> licensePatterns) {
     String cacheKey = dependency.dependency().toGav() + ":noticeUrl";
     Path tempFile = null;
     boolean shouldDeleteTempFile = true;
@@ -257,18 +259,18 @@ public class UserOverrideSource implements NoticeSource {
         }
       }
 
-      // アーカイブから NOTICE を抽出
-      return extractFromArchive(tempFile, archiveUrl, dependency, patterns);
+      // アーカイブから NOTICE/LICENSE を抽出
+      return extractFromArchive(tempFile, archiveUrl, dependency, noticePatterns, licensePatterns);
 
     } catch (HttpRequestException e) {
       LOG.error("アーカイブのダウンロードに失敗: {} ({}) - {}",
           archiveUrl, dependency.dependency().toGav(), e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, archiveUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, archiveUrl,
           "アーカイブダウンロードエラー: " + e.getMessage());
     } catch (IOException e) {
       LOG.error("一時ファイルの作成に失敗: {} ({}) - {}",
           archiveUrl, dependency.dependency().toGav(), e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, archiveUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, archiveUrl,
           "一時ファイル作成エラー: " + e.getMessage());
     } finally {
       if (shouldDeleteTempFile && tempFile != null) {
@@ -277,27 +279,30 @@ public class UserOverrideSource implements NoticeSource {
     }
   }
 
-  /** アーカイブファイルから NOTICE を抽出する。 */
+  /** アーカイブファイルから NOTICE/LICENSE を抽出する。 */
   private NoticeSearchResult extractFromArchive(Path archivePath, String sourceUrl,
-      LicensedDependency dependency, List<String> patterns) {
+      LicensedDependency dependency, List<String> noticePatterns, List<String> licensePatterns) {
     try {
-      Optional<String> content = archiveExtractor.extract(archivePath, patterns);
-      if (content.isPresent()) {
-        LOG.info("ユーザ指定アーカイブから NOTICE を抽出: {} ({})",
+      Optional<String> noticeContent = archiveExtractor.extract(archivePath, noticePatterns);
+      Optional<String> licenseContent = archiveExtractor.extract(archivePath, licensePatterns);
+
+      if (noticeContent.isPresent() || licenseContent.isPresent()) {
+        LOG.info("ユーザ指定アーカイブから NOTICE/LICENSE を抽出: {} ({})",
             sourceUrl, dependency.dependency().toGav());
-        return new NoticeSearchResult(SearchOutcome.FOUND, content.get(), sourceUrl, null);
+        return new NoticeSearchResult(SearchOutcome.FOUND,
+            noticeContent.orElse(null),
+            licenseContent.orElse(null),
+            sourceUrl, null);
       } else {
-        LOG.warn("アーカイブ内に NOTICE が見つかりません: {} ({})",
+        LOG.warn("アーカイブ内に NOTICE/LICENSE が見つかりません: {} ({})",
             sourceUrl, dependency.dependency().toGav());
-        // ユーザが明示的に指定したソースなので、SOURCE_FOUND_NO_NOTICE を返す
-        // これにより後続のソースは試行されず、NOT_REQUIRED となる
-        return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, sourceUrl,
-            "アーカイブ内に NOTICE ファイルが存在しません");
+        return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null, sourceUrl,
+            "アーカイブ内に NOTICE/LICENSE ファイルが存在しません");
       }
     } catch (IOException e) {
-      LOG.error("アーカイブからの NOTICE 抽出に失敗: {} ({}) - {}",
+      LOG.error("アーカイブからの NOTICE/LICENSE 抽出に失敗: {} ({}) - {}",
           sourceUrl, dependency.dependency().toGav(), e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, sourceUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, sourceUrl,
           "アーカイブ抽出エラー: " + e.getMessage());
     }
   }

@@ -57,12 +57,14 @@ public class CustomRepoSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     String gav = dependency.dependency().toGav();
 
     SourceRepoConfig repoConfig = findRepoConfig(dependency);
     if (repoConfig == null) {
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "ソースリポジトリ設定が見つかりません");
     }
 
@@ -72,10 +74,10 @@ public class CustomRepoSource implements NoticeSource {
     Path tempDir = null;
     try {
       tempDir = Files.createTempDirectory("notice-repo-");
-      return cloneAndSearch(repoUrl, version, patterns, tempDir, gav);
+      return cloneAndSearch(repoUrl, version, noticePatterns, licensePatterns, tempDir, gav);
     } catch (IOException e) {
       LOG.warn("一時ディレクトリの作成に失敗: {}", gav, e);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, repoUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, repoUrl,
           "一時ディレクトリ作成エラー: " + e.getMessage());
     } finally {
       deleteTempDir(tempDir);
@@ -112,7 +114,8 @@ public class CustomRepoSource implements NoticeSource {
    * リポジトリを clone し、バージョンタグから NOTICE ファイルを検索する。
    */
   private NoticeSearchResult cloneAndSearch(String repoUrl, String version,
-      List<String> patterns, Path tempDir, String gav) {
+      List<String> noticePatterns, List<String> licensePatterns,
+      Path tempDir, String gav) {
     try (Git git = Git.cloneRepository()
         .setURI(repoUrl)
         .setDirectory(tempDir.toFile())
@@ -125,29 +128,36 @@ public class CustomRepoSource implements NoticeSource {
       // バージョンタグ候補を順に試行
       String[] tagCandidates = {"v" + version, version};
       for (String tag : tagCandidates) {
-        Optional<String> content = searchInTag(repository, tag, patterns);
-        if (content.isPresent()) {
+        Optional<String> noticeContent = searchInTag(repository, tag, noticePatterns);
+        Optional<String> licenseContent = searchInTag(repository, tag, licensePatterns);
+        if (noticeContent.isPresent() || licenseContent.isPresent()) {
           String sourceUrl = repoUrl + " (tag: " + tag + ")";
-          LOG.info("カスタムリポジトリから NOTICE を発見: {} ({})", sourceUrl, gav);
-          return new NoticeSearchResult(SearchOutcome.FOUND, content.get(), sourceUrl, null);
+          LOG.info("カスタムリポジトリから NOTICE/LICENSE を発見: {} ({})", sourceUrl, gav);
+          return new NoticeSearchResult(SearchOutcome.FOUND,
+              noticeContent.orElse(null),
+              licenseContent.orElse(null),
+              sourceUrl, null);
         }
       }
 
       // タグが見つからない場合は HEAD で検索
-      Optional<String> headContent = searchInHead(repository, patterns);
-      if (headContent.isPresent()) {
-        LOG.info("カスタムリポジトリ HEAD から NOTICE を発見: {} ({})", repoUrl, gav);
-        return new NoticeSearchResult(SearchOutcome.FOUND, headContent.get(),
+      Optional<String> headNotice = searchInHead(repository, noticePatterns);
+      Optional<String> headLicense = searchInHead(repository, licensePatterns);
+      if (headNotice.isPresent() || headLicense.isPresent()) {
+        LOG.info("カスタムリポジトリ HEAD から NOTICE/LICENSE を発見: {} ({})", repoUrl, gav);
+        return new NoticeSearchResult(SearchOutcome.FOUND,
+            headNotice.orElse(null),
+            headLicense.orElse(null),
             repoUrl + " (HEAD)", null);
       }
 
-      LOG.debug("カスタムリポジトリに NOTICE なし: {} ({})", repoUrl, gav);
-      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, repoUrl,
-          "カスタムリポジトリに NOTICE が含まれていません");
+      LOG.debug("カスタムリポジトリに NOTICE/LICENSE なし: {} ({})", repoUrl, gav);
+      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null, repoUrl,
+          "カスタムリポジトリに NOTICE/LICENSE が含まれていません");
 
     } catch (GitAPIException e) {
       LOG.debug("リポジトリの clone に失敗: {} ({}) - {}", repoUrl, gav, e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, repoUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, repoUrl,
           "リポジトリ clone エラー: " + e.getMessage());
     }
   }

@@ -27,6 +27,9 @@ class MavenCentralSourceTest {
   private static final List<String> PATTERNS =
       List.of("META-INF/NOTICE", "META-INF/NOTICE.txt", "NOTICE");
 
+  private static final List<String> LICENSE_PATTERNS =
+      List.of("META-INF/LICENSE", "META-INF/LICENSE.txt", "LICENSE");
+
   private LicensedDependency createDep(String groupId, String artifactId, String version) {
     return new LicensedDependency(
         new Dependency(groupId, artifactId, version, "compile", "jar"),
@@ -85,7 +88,7 @@ class MavenCentralSourceTest {
 
     MavenCentralSource source = new MavenCentralSource(new StubHttpClient(jarBytes));
     NoticeSearchResult result = source.search(
-        createDep("org.apache.commons", "commons-lang3", "3.14.0"), PATTERNS);
+        createDep("org.apache.commons", "commons-lang3", "3.14.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Maven Central NOTICE content", result.noticeContent());
@@ -101,7 +104,7 @@ class MavenCentralSourceTest {
 
     MavenCentralSource source = new MavenCentralSource(new StubHttpClient(jarBytes));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "no-notice", "1.0"), PATTERNS);
+        createDep("org.example", "no-notice", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.SOURCE_FOUND_NO_NOTICE, result.outcome());
     assertNull(result.noticeContent());
@@ -112,7 +115,7 @@ class MavenCentralSourceTest {
     MavenCentralSource source = new MavenCentralSource(
         new StubHttpClient(new HttpRequestException("Not Found", 404)));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "missing", "1.0"), PATTERNS);
+        createDep("org.example", "missing", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
     assertNull(result.noticeContent());
@@ -123,7 +126,7 @@ class MavenCentralSourceTest {
     MavenCentralSource source = new MavenCentralSource(
         new StubHttpClient(new HttpRequestException("Server Error", 500)));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "error", "1.0"), PATTERNS);
+        createDep("org.example", "error", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.ERROR, result.outcome());
     assertNotNull(result.message());

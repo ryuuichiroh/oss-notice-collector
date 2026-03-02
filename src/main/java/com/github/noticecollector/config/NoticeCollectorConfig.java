@@ -21,7 +21,7 @@ public class NoticeCollectorConfig {
   private ApacheArchiveConfig apacheArchive = new ApacheArchiveConfig();
   private List<OverrideConfig> overrides = new ArrayList<>();
   private List<SourceRepoConfig> sourceRepositories = new ArrayList<>();
-  private List<String> targetLicenses = new ArrayList<>(List.of("Apache-2.0"));
+  private List<String> targetLicenses = new ArrayList<>();
   private ExternalDefinitionsConfig externalDefinitions = new ExternalDefinitionsConfig();
 
   public ProjectConfig getProject() {
@@ -192,7 +192,7 @@ public class NoticeCollectorConfig {
   /** 出力設定。 */
   public static class OutputConfig {
     private String directory = "./output";
-    private String aggregatedFile = "THIRD-PARTY-NOTICES.txt";
+    private String aggregatedFile = "THIRD-PARTY-LEGAL.txt";
     private String reportFile = "collection-report.json";
 
     public String getDirectory() {

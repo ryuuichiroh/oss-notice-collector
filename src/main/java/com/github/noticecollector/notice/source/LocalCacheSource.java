@@ -62,16 +62,18 @@ public class LocalCacheSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     // Maven ローカルリポジトリから検索
-    NoticeSearchResult mavenResult = searchMavenLocal(dependency, patterns);
+    NoticeSearchResult mavenResult = searchMavenLocal(dependency, noticePatterns, licensePatterns);
     if (mavenResult.outcome() == SearchOutcome.FOUND
         || mavenResult.outcome() == SearchOutcome.SOURCE_FOUND_NO_NOTICE) {
       return mavenResult;
     }
 
     // Gradle キャッシュから検索
-    return searchGradleCache(dependency, patterns);
+    return searchGradleCache(dependency, noticePatterns, licensePatterns);
   }
 
   @Override
@@ -84,11 +86,11 @@ public class LocalCacheSource implements NoticeSource {
     return "LOCAL_CACHE";
   }
 
-  /** Maven ローカルリポジトリの JAR から NOTICE を検索する。 */
+  /** Maven ローカルリポジトリの JAR から NOTICE/LICENSE を検索する。 */
   private NoticeSearchResult searchMavenLocal(
-      LicensedDependency dependency, List<String> patterns) {
+      LicensedDependency dependency, List<String> noticePatterns, List<String> licensePatterns) {
     Path jarPath = dependency.dependency().toLocalJarPath(mavenLocalRepository);
-    return extractFromJar(jarPath, patterns, dependency, "Maven ローカルリポジトリ");
+    return extractFromJar(jarPath, noticePatterns, licensePatterns, dependency, "Maven ローカルリポジトリ");
   }
 
   /**
@@ -97,7 +99,7 @@ public class LocalCacheSource implements NoticeSource {
    * の構造を持つ。ハッシュディレクトリが複数存在する可能性があるため、最初に見つかった JAR を使用する。
    */
   private NoticeSearchResult searchGradleCache(
-      LicensedDependency dependency, List<String> patterns) {
+      LicensedDependency dependency, List<String> noticePatterns, List<String> licensePatterns) {
     String groupId = dependency.dependency().groupId();
     String artifactId = dependency.dependency().artifactId();
     String version = dependency.dependency().version();
@@ -105,7 +107,7 @@ public class LocalCacheSource implements NoticeSource {
 
     Path artifactDir = gradleCacheDir.resolve(groupId).resolve(artifactId).resolve(version);
     if (!Files.isDirectory(artifactDir)) {
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "Gradle キャッシュにディレクトリが見つかりません");
     }
 
@@ -118,44 +120,48 @@ public class LocalCacheSource implements NoticeSource {
           .findFirst();
 
       if (jarPath.isEmpty()) {
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
             "Gradle キャッシュに JAR が見つかりません");
       }
 
-      return extractFromJar(jarPath.get(), patterns, dependency, "Gradle キャッシュ");
+      return extractFromJar(jarPath.get(), noticePatterns, licensePatterns, dependency, "Gradle キャッシュ");
     } catch (IOException e) {
       LOG.warn("Gradle キャッシュの走査に失敗: {} ({})",
           artifactDir, dependency.dependency().toGav(), e);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, null,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, null,
           "Gradle キャッシュ走査エラー: " + e.getMessage());
     }
   }
 
-  /** JAR ファイルから NOTICE を抽出する共通処理。 */
+  /** JAR ファイルから NOTICE/LICENSE を抽出する共通処理。 */
   private NoticeSearchResult extractFromJar(
-      Path jarPath, List<String> patterns,
+      Path jarPath, List<String> noticePatterns, List<String> licensePatterns,
       LicensedDependency dependency, String sourceName) {
     if (!Files.isRegularFile(jarPath)) {
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           sourceName + "に JAR が見つかりません: " + jarPath);
     }
 
     try {
-      Optional<String> content = jarExtractor.extract(jarPath, patterns);
-      if (content.isPresent()) {
-        LOG.info("{}の JAR から NOTICE を発見: {} ({})",
+      Optional<String> noticeContent = jarExtractor.extract(jarPath, noticePatterns);
+      Optional<String> licenseContent = jarExtractor.extract(jarPath, licensePatterns);
+
+      if (noticeContent.isPresent() || licenseContent.isPresent()) {
+        LOG.info("{}の JAR から NOTICE/LICENSE を発見: {} ({})",
             sourceName, jarPath, dependency.dependency().toGav());
-        return new NoticeSearchResult(SearchOutcome.FOUND, content.get(),
+        return new NoticeSearchResult(SearchOutcome.FOUND,
+            noticeContent.orElse(null),
+            licenseContent.orElse(null),
             jarPath.toString(), null);
       }
-      LOG.debug("{}の JAR に NOTICE なし: {} ({})",
+      LOG.debug("{}の JAR に NOTICE/LICENSE なし: {} ({})",
           sourceName, jarPath, dependency.dependency().toGav());
-      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null,
-          jarPath.toString(), sourceName + "の JAR に NOTICE が含まれていません");
+      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null,
+          jarPath.toString(), sourceName + "の JAR に NOTICE/LICENSE が含まれていません");
     } catch (IOException e) {
-      LOG.warn("JAR からの NOTICE 抽出に失敗: {} ({})",
+      LOG.warn("JAR からの NOTICE/LICENSE 抽出に失敗: {} ({})",
           jarPath, dependency.dependency().toGav(), e);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, jarPath.toString(),
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, jarPath.toString(),
           "JAR 読込エラー: " + e.getMessage());
     }
   }

@@ -81,14 +81,14 @@ project:
 ```yaml
 output:
   directory: "output"
-  aggregatedFile: "THIRD-PARTY-NOTICES.txt"
+  aggregatedFile: "THIRD-PARTY-LEGAL.txt"
   reportFile: "collection-report.json"
 ```
 
 | 項目 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
 | `directory` | ○ | - | 出力先ディレクトリパス（相対パスまたは絶対パス） |
-| `aggregatedFile` | × | `THIRD-PARTY-NOTICES.txt` | 全 NOTICE を連結したファイル名 |
+| `aggregatedFile` | × | `THIRD-PARTY-LEGAL.txt` | 全 NOTICE / LICENSE を連結したファイル名 |
 | `reportFile` | × | `collection-report.json` | 収集結果レポートのファイル名 |
 
 **出力されるファイル構造:**
@@ -99,7 +99,7 @@ output/
 │       └── {artifactId}/
 │           └── {version}/
 │               └── NOTICE
-├── THIRD-PARTY-NOTICES.txt
+├── THIRD-PARTY-LEGAL.txt
 └── collection-report.json
 ```
 
@@ -293,7 +293,7 @@ project:
 
 output:
   directory: "output"
-  aggregatedFile: "THIRD-PARTY-NOTICES.txt"
+  aggregatedFile: "THIRD-PARTY-LEGAL.txt"
   reportFile: "collection-report.json"
 
 github:
@@ -384,7 +384,7 @@ project:
 
 output:
   directory: "output"
-  aggregatedFile: "THIRD-PARTY-NOTICES.txt"
+  aggregatedFile: "THIRD-PARTY-LEGAL.txt"
   reportFile: "collection-report.json"
 
 github:

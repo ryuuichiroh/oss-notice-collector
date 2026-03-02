@@ -1,15 +1,20 @@
 package com.github.noticecollector.notice;
 
 /**
- * NoticeSource による NOTICE 検索の結果を保持するモデル。
+ * NoticeSource による NOTICE/LICENSE 検索の結果を保持するモデル。
  *
  * @param outcome 検索結果の種別
  * @param noticeContent NOTICE 内容（FOUND の場合のみ非 null）
+ * @param licenseContent LICENSE 内容（FOUND の場合のみ非 null）
  * @param sourceUrl 取得元 URL
  * @param message 補足メッセージ
  */
 public record NoticeSearchResult(
-    SearchOutcome outcome, String noticeContent, String sourceUrl, String message) {
+    SearchOutcome outcome,
+    String noticeContent,
+    String licenseContent,
+    String sourceUrl,
+    String message) {
 
   /** NOTICE 検索結果の種別。 */
   public enum SearchOutcome {

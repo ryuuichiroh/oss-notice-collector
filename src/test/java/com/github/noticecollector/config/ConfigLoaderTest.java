@@ -33,14 +33,13 @@ class ConfigLoaderTest {
     assertEquals(".", config.getProject().getPath());
     assertEquals("auto", config.getProject().getBuildTool());
     assertEquals("./output", config.getOutput().getDirectory());
-    assertEquals("THIRD-PARTY-NOTICES.txt", config.getOutput().getAggregatedFile());
+    assertEquals("THIRD-PARTY-LEGAL.txt", config.getOutput().getAggregatedFile());
     assertEquals("collection-report.json", config.getOutput().getReportFile());
     assertEquals("GITHUB_TOKEN", config.getGithub().getTokenEnv());
     assertEquals("https://api.github.com", config.getGithub().getApiBaseUrl());
     assertTrue(config.getApacheArchive().isEnabled());
     assertEquals(50, config.getApacheArchive().getMaxDownloadSizeMb());
-    assertEquals(1, config.getTargetLicenses().size());
-    assertEquals("Apache-2.0", config.getTargetLicenses().get(0));
+    assertEquals(0, config.getTargetLicenses().size());
   }
 
   @Test

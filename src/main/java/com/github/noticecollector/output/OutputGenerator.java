@@ -51,7 +51,7 @@ public class OutputGenerator {
    * <ol>
    *   <li>SUCCESS の NOTICE ファイルを個別に保存</li>
    *   <li>JSON レポート（collection-report.json）を生成</li>
-   *   <li>集約 NOTICE ファイル（THIRD-PARTY-NOTICES.txt）を生成</li>
+  *   <li>集約 NOTICE ファイル（THIRD-PARTY-LEGAL.txt）を生成</li>
    * </ol>
    *
    * @param results 収集結果リスト

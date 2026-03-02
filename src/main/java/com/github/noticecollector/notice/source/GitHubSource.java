@@ -68,7 +68,9 @@ public class GitHubSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     String gav = dependency.dependency().toGav();
 
     // 1. pom.xml から SCM URL を取得
@@ -77,13 +79,13 @@ public class GitHubSource implements NoticeSource {
       scmUrl = fetchScmUrl(dependency);
     } catch (Exception e) {
       LOG.debug("pom.xml の取得/パースに失敗: {} - {}", gav, e.getMessage());
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "pom.xml から SCM 情報を取得できません: " + e.getMessage());
     }
 
     if (scmUrl == null) {
       LOG.debug("pom.xml に GitHub SCM URL がありません: {}", gav);
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "pom.xml に GitHub SCM URL が含まれていません");
     }
 
@@ -91,7 +93,7 @@ public class GitHubSource implements NoticeSource {
     String[] ownerRepo = extractOwnerRepo(scmUrl);
     if (ownerRepo == null) {
       LOG.debug("GitHub URL のパースに失敗: {} ({})", scmUrl, gav);
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, scmUrl,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, scmUrl,
           "GitHub URL から owner/repo を抽出できません");
     }
 
@@ -99,8 +101,8 @@ public class GitHubSource implements NoticeSource {
     String repo = ownerRepo[1];
     String version = dependency.dependency().version();
 
-    // 3. バージョンタグで NOTICE を検索（タグ候補: v{version}, {version}）
-    return searchNoticeInRepo(owner, repo, version, patterns, gav);
+    // 3. バージョンタグで NOTICE/LICENSE を検索（タグ候補: v{version}, {version}）
+    return searchFilesInRepo(owner, repo, version, noticePatterns, licensePatterns, gav);
   }
 
   @Override
@@ -172,15 +174,16 @@ public class GitHubSource implements NoticeSource {
   }
 
   /**
-   * GitHub Contents API を使用してリポジトリの NOTICE ファイルを検索する。
+   * GitHub Contents API を使用してリポジトリの NOTICE/LICENSE ファイルを検索する。
    * バージョンタグ候補（v{version}、{version}）を順に試行する。
    */
-  private NoticeSearchResult searchNoticeInRepo(String owner, String repo, String version,
-      List<String> patterns, String gav) {
+  private NoticeSearchResult searchFilesInRepo(String owner, String repo, String version,
+      List<String> noticePatterns, List<String> licensePatterns, String gav) {
     String[] tagCandidates = {"v" + version, version, repo + "-" + version};
 
     for (String tag : tagCandidates) {
-      NoticeSearchResult result = searchWithTag(owner, repo, tag, patterns, gav);
+      NoticeSearchResult result = searchWithTag(owner, repo, tag,
+          noticePatterns, licensePatterns, gav);
       if (result.outcome() == SearchOutcome.FOUND) {
         return result;
       }
@@ -190,70 +193,102 @@ public class GitHubSource implements NoticeSource {
     }
 
     // デフォルトブランチ（タグなし）でも試行
-    NoticeSearchResult defaultResult = searchWithTag(owner, repo, null, patterns, gav);
+    NoticeSearchResult defaultResult = searchWithTag(owner, repo, null,
+        noticePatterns, licensePatterns, gav);
     if (defaultResult.outcome() == SearchOutcome.FOUND
         || defaultResult.outcome() == SearchOutcome.SOURCE_FOUND_NO_NOTICE) {
       return defaultResult;
     }
 
     String repoUrl = String.format("https://github.com/%s/%s", owner, repo);
-    return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, repoUrl,
-        "GitHub リポジトリから NOTICE が見つかりません");
+    return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, repoUrl,
+        "GitHub リポジトリから NOTICE/LICENSE が見つかりません");
   }
 
   /**
-   * 特定のタグ（またはデフォルトブランチ）で NOTICE ファイルを検索する。
+   * 特定のタグ（またはデフォルトブランチ）で NOTICE/LICENSE ファイルを検索する。
    */
   private NoticeSearchResult searchWithTag(String owner, String repo, String ref,
-      List<String> patterns, String gav) {
-    for (String pattern : patterns) {
-      String apiUrl = buildContentsApiUrl(owner, repo, pattern, ref);
-      try {
-        String json = httpClient.getString(apiUrl);
-        JsonNode node = objectMapper.readTree(json);
+      List<String> noticePatterns, List<String> licensePatterns, String gav) {
+    String noticeContent = null;
+    String noticeSourceUrl = null;
+    String licenseContent = null;
 
-        // Contents API はファイルが見つかった場合、content フィールドを含む
-        JsonNode contentNode = node.get("content");
-        if (contentNode != null && !contentNode.isNull()) {
-          String encoded = contentNode.asText().replaceAll("\\s", "");
-          String content = new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
-          String sourceUrl = String.format("https://github.com/%s/%s/blob/%s/%s",
-              owner, repo, ref != null ? ref : "HEAD", pattern);
-          LOG.info("GitHub から NOTICE を発見: {} ({})", sourceUrl, gav);
-          return new NoticeSearchResult(SearchOutcome.FOUND, content, sourceUrl, null);
-        }
-      } catch (HttpRequestException e) {
-        if (e.getStatusCode() == 404) {
-          LOG.debug("GitHub Contents API 404: {} ({})", apiUrl, gav);
-          continue;
-        }
-        LOG.debug("GitHub Contents API エラー: {} ({}) - {}", apiUrl, gav, e.getMessage());
-        // 認証エラー等は即座にエラーを返す
-        if (e.getStatusCode() == 401 || e.getStatusCode() == 403) {
-          return new NoticeSearchResult(SearchOutcome.ERROR, null, apiUrl,
-              "GitHub API 認証エラー: " + e.getMessage());
-        }
-      } catch (Exception e) {
-        LOG.debug("GitHub Contents API 処理エラー: {} ({}) - {}", apiUrl, gav, e.getMessage());
+    // NOTICE パターンで検索
+    for (String pattern : noticePatterns) {
+      String result = fetchFileContent(owner, repo, pattern, ref, gav);
+      if (result != null) {
+        noticeContent = result;
+        noticeSourceUrl = String.format("https://github.com/%s/%s/blob/%s/%s",
+            owner, repo, ref != null ? ref : "HEAD", pattern);
+        break;
       }
     }
 
-    // リポジトリの存在確認（最初のパターンの 404 だけでは判断できないため）
+    // LICENSE パターンで検索
+    for (String pattern : licensePatterns) {
+      String result = fetchFileContent(owner, repo, pattern, ref, gav);
+      if (result != null) {
+        licenseContent = result;
+        if (noticeSourceUrl == null) {
+          noticeSourceUrl = String.format("https://github.com/%s/%s/blob/%s/%s",
+              owner, repo, ref != null ? ref : "HEAD", pattern);
+        }
+        break;
+      }
+    }
+
+    if (noticeContent != null || licenseContent != null) {
+      LOG.info("GitHub から NOTICE/LICENSE を発見: {} ({})", noticeSourceUrl, gav);
+      return new NoticeSearchResult(SearchOutcome.FOUND, noticeContent, licenseContent,
+          noticeSourceUrl, null);
+    }
+
+    // リポジトリの存在確認
     String repoApiUrl = buildRepoApiUrl(owner, repo);
     try {
       httpClient.getString(repoApiUrl);
-      // リポジトリは存在するが NOTICE がない
       String repoUrl = String.format("https://github.com/%s/%s", owner, repo);
-      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, repoUrl,
-          "GitHub リポジトリに NOTICE が含まれていません");
+      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null, repoUrl,
+          "GitHub リポジトリに NOTICE/LICENSE が含まれていません");
     } catch (HttpRequestException e) {
       if (e.getStatusCode() == 404) {
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
             "GitHub リポジトリが見つかりません: " + owner + "/" + repo);
       }
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, null,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, null,
           "GitHub API エラー: " + e.getMessage());
     }
+  }
+
+  /**
+   * GitHub Contents API から単一ファイルの内容を取得する。
+   *
+   * @return ファイル内容。見つからない場合は {@code null}
+   */
+  private String fetchFileContent(String owner, String repo, String path, String ref, String gav) {
+    String apiUrl = buildContentsApiUrl(owner, repo, path, ref);
+    try {
+      String json = httpClient.getString(apiUrl);
+      JsonNode node = objectMapper.readTree(json);
+
+      JsonNode contentNode = node.get("content");
+      if (contentNode != null && !contentNode.isNull()) {
+        String encoded = contentNode.asText().replaceAll("\\s", "");
+        return new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
+      }
+    } catch (HttpRequestException e) {
+      if (e.getStatusCode() == 404) {
+        LOG.debug("GitHub Contents API 404: {} ({})", apiUrl, gav);
+      } else if (e.getStatusCode() == 401 || e.getStatusCode() == 403) {
+        LOG.debug("GitHub API 認証エラー: {} ({}) - {}", apiUrl, gav, e.getMessage());
+      } else {
+        LOG.debug("GitHub Contents API エラー: {} ({}) - {}", apiUrl, gav, e.getMessage());
+      }
+    } catch (Exception e) {
+      LOG.debug("GitHub Contents API 処理エラー: {} ({}) - {}", apiUrl, gav, e.getMessage());
+    }
+    return null;
   }
 
   /**

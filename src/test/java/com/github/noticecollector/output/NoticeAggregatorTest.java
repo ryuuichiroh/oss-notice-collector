@@ -23,22 +23,22 @@ class NoticeAggregatorTest {
       Dependency d, String sourceUrl, String noticeContent) {
     return new CollectionResult(
         d, "Apache-2.0", CollectionStatus.SUCCESS, "LOCAL_CACHE", sourceUrl, null, noticeContent,
-        null);
+        null, null, null);
   }
 
   private static CollectionResult failedResult(Dependency d) {
     return new CollectionResult(
-        d, "Apache-2.0", CollectionStatus.FAILED, null, null, null, null, "No source found");
+        d, "Apache-2.0", CollectionStatus.FAILED, null, null, null, null, null, null, "No source found");
   }
 
   @Test
   void aggregate_writesFile() throws Exception {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     Dependency d1 = dep("org.apache", "commons-lang3", "3.14.0");
 
     aggregator.aggregate(List.of(successResult(d1, "https://example.com", "Sample NOTICE")));
 
-    Path outputPath = tempDir.resolve("THIRD-PARTY-NOTICES.txt");
+    Path outputPath = tempDir.resolve("THIRD-PARTY-LEGAL.txt");
     assertTrue(Files.exists(outputPath));
     String content = Files.readString(outputPath);
     assertFalse(content.isEmpty());
@@ -46,13 +46,13 @@ class NoticeAggregatorTest {
 
   @Test
   void aggregate_entryContainsHeaderAndSeparator() throws Exception {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     Dependency d1 = dep("org.apache", "commons-lang3", "3.14.0");
 
     aggregator.aggregate(
         List.of(successResult(d1, "https://repo1.maven.org/source.jar", "Apache NOTICE content")));
 
-    String content = Files.readString(tempDir.resolve("THIRD-PARTY-NOTICES.txt"));
+    String content = Files.readString(tempDir.resolve("THIRD-PARTY-LEGAL.txt"));
 
     assertTrue(content.contains("artifactId: commons-lang3"));
     assertTrue(content.contains("version: 3.14.0"));
@@ -64,7 +64,7 @@ class NoticeAggregatorTest {
 
   @Test
   void aggregate_multipleEntries_allIncluded() throws Exception {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     Dependency d1 = dep("org.apache", "lib-a", "1.0");
     Dependency d2 = dep("com.google", "lib-b", "2.0");
 
@@ -72,7 +72,7 @@ class NoticeAggregatorTest {
         successResult(d1, "https://url-a", "NOTICE A"),
         successResult(d2, "https://url-b", "NOTICE B")));
 
-    String content = Files.readString(tempDir.resolve("THIRD-PARTY-NOTICES.txt"));
+    String content = Files.readString(tempDir.resolve("THIRD-PARTY-LEGAL.txt"));
 
     assertTrue(content.contains("artifactId: lib-a"));
     assertTrue(content.contains("NOTICE A"));
@@ -82,7 +82,7 @@ class NoticeAggregatorTest {
 
   @Test
   void aggregate_filtersOnlySuccess() throws Exception {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     Dependency d1 = dep("org.apache", "lib-a", "1.0");
     Dependency d2 = dep("org.apache", "lib-b", "2.0");
 
@@ -90,7 +90,7 @@ class NoticeAggregatorTest {
         successResult(d1, "https://url-a", "NOTICE A"),
         failedResult(d2)));
 
-    String content = Files.readString(tempDir.resolve("THIRD-PARTY-NOTICES.txt"));
+    String content = Files.readString(tempDir.resolve("THIRD-PARTY-LEGAL.txt"));
 
     assertTrue(content.contains("NOTICE A"));
     assertFalse(content.contains("lib-b"));
@@ -98,28 +98,28 @@ class NoticeAggregatorTest {
 
   @Test
   void aggregate_emptyResults_producesEmptyFile() throws Exception {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
 
     aggregator.aggregate(List.of());
 
-    String content = Files.readString(tempDir.resolve("THIRD-PARTY-NOTICES.txt"));
+    String content = Files.readString(tempDir.resolve("THIRD-PARTY-LEGAL.txt"));
     assertEquals("", content);
   }
 
   @Test
   void aggregate_nullSourceUrl_showsNA() throws Exception {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     Dependency d1 = dep("org.apache", "lib-a", "1.0");
 
     aggregator.aggregate(List.of(successResult(d1, null, "NOTICE content")));
 
-    String content = Files.readString(tempDir.resolve("THIRD-PARTY-NOTICES.txt"));
+    String content = Files.readString(tempDir.resolve("THIRD-PARTY-LEGAL.txt"));
     assertTrue(content.contains("sourceUrl: N/A"));
   }
 
   @Test
   void buildContent_successCountMatchesEntries() {
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     Dependency d1 = dep("org.apache", "lib-a", "1.0");
     Dependency d2 = dep("org.apache", "lib-b", "2.0");
     Dependency d3 = dep("org.apache", "lib-c", "3.0");
@@ -139,7 +139,7 @@ class NoticeAggregatorTest {
   void constructor_rejectsNullOutputDirectory() {
     assertThrows(
         NullPointerException.class,
-        () -> new NoticeAggregator(null, "THIRD-PARTY-NOTICES.txt"));
+        () -> new NoticeAggregator(null, "THIRD-PARTY-LEGAL.txt"));
   }
 
   @Test

@@ -25,6 +25,9 @@ class LocalCacheSourceTest {
   private static final List<String> PATTERNS =
       List.of("META-INF/NOTICE", "META-INF/NOTICE.txt", "NOTICE");
 
+  private static final List<String> LICENSE_PATTERNS =
+      List.of("META-INF/LICENSE", "META-INF/LICENSE.txt", "LICENSE");
+
   private LicensedDependency createDep(String groupId, String artifactId, String version) {
     return new LicensedDependency(
         new Dependency(groupId, artifactId, version, "compile", "jar"),
@@ -69,7 +72,7 @@ class LocalCacheSourceTest {
     NoticeCollectorConfig config = createConfig(tempDir.toString(), tempDir.resolve("gradle").toString());
     LocalCacheSource source = new LocalCacheSource(config);
     NoticeSearchResult result = source.search(
-        createDep("org.example", "mylib", "1.0"), PATTERNS);
+        createDep("org.example", "mylib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Maven local NOTICE content", result.noticeContent());
@@ -86,7 +89,7 @@ class LocalCacheSourceTest {
     NoticeCollectorConfig config = createConfig(tempDir.toString(), tempDir.resolve("gradle").toString());
     LocalCacheSource source = new LocalCacheSource(config);
     NoticeSearchResult result = source.search(
-        createDep("org.example", "mylib", "1.0"), PATTERNS);
+        createDep("org.example", "mylib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.SOURCE_FOUND_NO_NOTICE, result.outcome());
     assertNull(result.noticeContent());
@@ -97,7 +100,7 @@ class LocalCacheSourceTest {
     NoticeCollectorConfig config = createConfig(tempDir.toString(), tempDir.resolve("gradle").toString());
     LocalCacheSource source = new LocalCacheSource(config);
     NoticeSearchResult result = source.search(
-        createDep("org.nonexistent", "missing", "1.0"), PATTERNS);
+        createDep("org.nonexistent", "missing", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
   }
@@ -117,7 +120,7 @@ class LocalCacheSourceTest {
         tempDir.resolve("gradle").toString());
     LocalCacheSource source = new LocalCacheSource(config);
     NoticeSearchResult result = source.search(
-        createDep("org.example", "mylib", "2.0"), PATTERNS);
+        createDep("org.example", "mylib", "2.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Gradle cache NOTICE", result.noticeContent());
@@ -135,7 +138,7 @@ class LocalCacheSourceTest {
     NoticeCollectorConfig config = createConfig(tempDir.toString(), tempDir.resolve("gradle").toString());
     LocalCacheSource source = new LocalCacheSource(config);
     NoticeSearchResult result = source.search(
-        createDep("org.example", "mylib", "1.0"), PATTERNS);
+        createDep("org.example", "mylib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("First pattern match", result.noticeContent());
@@ -155,7 +158,7 @@ class LocalCacheSourceTest {
         tempDir.resolve("gradle").toString());
     LocalCacheSource source = new LocalCacheSource(config);
     NoticeSearchResult result = source.search(
-        createDep("com.example", "fallback", "1.0"), PATTERNS);
+        createDep("com.example", "fallback", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Gradle fallback NOTICE", result.noticeContent());

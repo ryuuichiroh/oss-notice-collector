@@ -98,24 +98,41 @@ public class NoticeCollectorApp implements Callable<Integer> {
           createLicenseIdentifier(config, licenseMapping, archiveCache);
       List<LicensedDependency> licensedDeps = licenseIdentifier.identifyLicenses(dependencies);
 
-      // 4. Apache-2.0 フィルタリング
-      List<LicensedDependency> apache2Deps =
-          licensedDeps.stream().filter(LicensedDependency::isApache2).toList();
+      // 4. targetLicenses フィルタリング
+      List<String> targetLicenses = config.getTargetLicenses();
       List<LicensedDependency> unknownDeps =
           licensedDeps.stream().filter(LicensedDependency::isUnknown).toList();
-      List<LicensedDependency> otherLicenseDeps =
-          licensedDeps.stream()
-              .filter(dep -> !dep.isApache2() && !dep.isUnknown())
-              .toList();
 
+      List<LicensedDependency> targetDeps;
+      List<LicensedDependency> otherLicenseDeps;
+
+      if (targetLicenses == null || targetLicenses.isEmpty()) {
+        // targetLicenses が未設定 → UNKNOWN_LICENSE 以外の全てを対象
+        targetDeps = licensedDeps.stream()
+            .filter(dep -> !dep.isUnknown())
+            .toList();
+        otherLicenseDeps = List.of();
+      } else {
+        // targetLicenses が設定済み → 指定されたライセンスのみ対象
+        targetDeps = licensedDeps.stream()
+            .filter(dep -> targetLicenses.contains(dep.spdxId()))
+            .toList();
+        otherLicenseDeps = licensedDeps.stream()
+            .filter(dep -> !targetLicenses.contains(dep.spdxId()) && !dep.isUnknown())
+            .toList();
+      }
+
+      String targetLabel = (targetLicenses == null || targetLicenses.isEmpty())
+          ? "全ライセンス" : String.join(", ", targetLicenses);
       System.out.printf(
-          "ライセンス特定完了: Apache-2.0 = %d 件, UNKNOWN = %d 件, その他 = %d 件%n",
-          apache2Deps.size(),
+          "ライセンス特定完了: 対象(%s) = %d 件, UNKNOWN = %d 件, 対象外 = %d 件%n",
+          targetLabel,
+          targetDeps.size(),
           unknownDeps.size(),
           otherLicenseDeps.size());
 
-      // 5. NOTICE 収集（Apache-2.0 + UNKNOWN_LICENSE を対象）
-      List<LicensedDependency> collectTargets = new ArrayList<>(apache2Deps);
+      // 5. NOTICE/LICENSE 収集（対象ライセンス + UNKNOWN_LICENSE を対象）
+      List<LicensedDependency> collectTargets = new ArrayList<>(targetDeps);
       collectTargets.addAll(unknownDeps);
 
       List<CollectionResult> results;
@@ -129,12 +146,14 @@ public class NoticeCollectorApp implements Callable<Integer> {
           .map(dep -> new CollectionResult(
               dep.dependency(),
               dep.spdxId(),
-              CollectionStatus.NOT_APACHE_2_0,
+              CollectionStatus.NOT_TARGET_LICENSE,
               null,
               null,
               null,
               null,
-              "Apache-2.0 以外のライセンス (" + dep.spdxId() + ") のため NOTICE 収集対象外"))
+              null,
+              null,
+              "targetLicenses に含まれないライセンス (" + dep.spdxId() + ") のため収集対象外"))
           .toList();
       
       // 全ての結果を統合
@@ -298,11 +317,17 @@ public class NoticeCollectorApp implements Callable<Integer> {
     return loader.loadDefaults();
   }
 
+  /** デフォルトの LICENSE 検索パターン。 */
+  private static final List<String> DEFAULT_LICENSE_PATTERNS = List.of(
+      "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/LICENSE.md",
+      "LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING", "COPYING.txt");
+
   /** NoticeCollector を構築する（7段階の NoticeSource を登録）。 */
   private NoticeCollector createNoticeCollector(
       NoticeCollectorConfig config, HttpClientWrapper httpClient, ArchiveCache archiveCache)
       throws NoticePatternLoader.NoticePatternLoadException {
-    List<String> patterns = loadNoticePatterns(config);
+    List<String> noticePatterns = loadNoticePatterns(config);
+    List<String> licensePatterns = DEFAULT_LICENSE_PATTERNS;
 
     List<NoticeSource> sources = new ArrayList<>();
     sources.add(new UserOverrideSource(config, httpClient, archiveCache));
@@ -313,14 +338,13 @@ public class NoticeCollectorApp implements Callable<Integer> {
     sources.add(new GitHubSource(config, httpClient));
     sources.add(new CustomRepoSource(config));
 
-    return new NoticeCollector(sources, patterns);
+    return new NoticeCollector(sources, noticePatterns, licensePatterns);
   }
 
   /** 収集結果のサマリをコンソールに表示する。 */
   private void printSummary(
       List<LicensedDependency> allDeps, List<CollectionResult> results) {
     long totalDeps = allDeps.size();
-    long apache2Count = allDeps.stream().filter(LicensedDependency::isApache2).count();
     long successCount =
         results.stream().filter(r -> r.status() == CollectionStatus.SUCCESS).count();
     long notRequiredCount =
@@ -329,17 +353,19 @@ public class NoticeCollectorApp implements Callable<Integer> {
         results.stream().filter(r -> r.status() == CollectionStatus.FAILED).count();
     long unknownCount =
         results.stream().filter(r -> r.status() == CollectionStatus.UNKNOWN_LICENSE).count();
+    long notTargetCount =
+        results.stream().filter(r -> r.status() == CollectionStatus.NOT_TARGET_LICENSE).count();
 
     System.out.println();
     System.out.println("========================================");
-    System.out.println("  NOTICE 収集結果サマリ");
+    System.out.println("  NOTICE/LICENSE 収集結果サマリ");
     System.out.println("========================================");
-    System.out.printf("  総依存関係数:       %d%n", totalDeps);
-    System.out.printf("  Apache-2.0:         %d%n", apache2Count);
-    System.out.printf("  収集成功 (SUCCESS): %d%n", successCount);
-    System.out.printf("  不要 (NOT_REQUIRED):%d%n", notRequiredCount);
-    System.out.printf("  失敗 (FAILED):      %d%n", failedCount);
-    System.out.printf("  不明 (UNKNOWN):     %d%n", unknownCount);
+    System.out.printf("  総依存関係数:              %d%n", totalDeps);
+    System.out.printf("  収集成功 (SUCCESS):        %d%n", successCount);
+    System.out.printf("  不要 (NOT_REQUIRED):       %d%n", notRequiredCount);
+    System.out.printf("  失敗 (FAILED):             %d%n", failedCount);
+    System.out.printf("  不明 (UNKNOWN):            %d%n", unknownCount);
+    System.out.printf("  対象外 (NOT_TARGET_LICENSE):%d%n", notTargetCount);
     System.out.println("========================================");
 
     if (failedCount > 0) {
