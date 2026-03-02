@@ -32,7 +32,7 @@ class ReportGeneratorTest {
       Dependency d, String spdxId, CollectionStatus status, String sourceName, String sourceUrl,
       String failureReason) {
     return new CollectionResult(d, spdxId, status, sourceName, sourceUrl, null, null,
-        failureReason);
+        null, null, failureReason);
   }
 
   @Test
@@ -155,7 +155,8 @@ class ReportGeneratorTest {
 
     // null fields should be omitted due to @JsonInclude(NON_NULL)
     assertNull(entry.get("failureReason"));
-    assertNull(entry.get("savedPath"));
+    assertNull(entry.get("noticeSavedPath"));
+    assertNull(entry.get("licenseSavedPath"));
     assertNull(entry.get("notRequiredSourceUrl"));
     assertNull(entry.get("notRequiredReason"));
   }

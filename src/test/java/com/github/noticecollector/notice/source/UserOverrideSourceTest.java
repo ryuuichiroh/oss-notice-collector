@@ -26,6 +26,9 @@ class UserOverrideSourceTest {
 
   private static final List<String> PATTERNS = List.of("META-INF/NOTICE", "NOTICE");
 
+  private static final List<String> LICENSE_PATTERNS =
+      List.of("META-INF/LICENSE", "META-INF/LICENSE.txt", "LICENSE");
+
   /** テスト用: NOTICE を含む tar.gz アーカイブを作成する。 */
   private void createTarGzWithNotice(Path archivePath, String noticeContent) throws IOException {
     try (var fos = Files.newOutputStream(archivePath);
@@ -134,7 +137,7 @@ class UserOverrideSourceTest {
     NoticeCollectorConfig config = createConfig(List.of());
     UserOverrideSource source = new UserOverrideSource(config, new StubHttpClient((String) null, false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
   }
 
@@ -145,7 +148,7 @@ class UserOverrideSourceTest {
     NoticeCollectorConfig config = createConfig(List.of(override));
     UserOverrideSource source = new UserOverrideSource(config, new StubHttpClient((String) null, false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
   }
 
@@ -159,7 +162,7 @@ class UserOverrideSourceTest {
     NoticeCollectorConfig config = createConfig(List.of(override));
     UserOverrideSource source = new UserOverrideSource(config, new StubHttpClient((String) null, false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Test NOTICE content", result.noticeContent());
@@ -173,7 +176,7 @@ class UserOverrideSourceTest {
     NoticeCollectorConfig config = createConfig(List.of(override));
     UserOverrideSource source = new UserOverrideSource(config, new StubHttpClient((String) null, false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
   }
 
@@ -186,7 +189,7 @@ class UserOverrideSourceTest {
     UserOverrideSource source =
         new UserOverrideSource(config, new StubHttpClient("NOTICE from URL", false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "2.0"), PATTERNS);
+        createDep("org.example", "lib", "2.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("NOTICE from URL", result.noticeContent());
@@ -202,7 +205,7 @@ class UserOverrideSourceTest {
     UserOverrideSource source =
         new UserOverrideSource(config, new StubHttpClient((String) null, true));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.ERROR, result.outcome());
     assertNotNull(result.message());
@@ -219,7 +222,7 @@ class UserOverrideSourceTest {
     NoticeCollectorConfig config = createConfig(List.of(override));
     UserOverrideSource source = new UserOverrideSource(config, new StubHttpClient((String) null, false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "3.0"), PATTERNS);
+        createDep("org.example", "lib", "3.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("version-agnostic NOTICE", result.noticeContent());
@@ -238,7 +241,7 @@ class UserOverrideSourceTest {
     UserOverrideSource source =
         new UserOverrideSource(config, new StubHttpClient("URL NOTICE", false));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Local NOTICE", result.noticeContent());
@@ -268,7 +271,7 @@ class UserOverrideSourceTest {
         new UserOverrideSource(config, new StubHttpClient(archiveFile, false));
     
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.2.3"), PATTERNS);
+        createDep("org.example", "lib", "1.2.3"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("https://github.com/example/repo/archive/refs/tags/1.2.3.tar.gz", 
@@ -291,7 +294,7 @@ class UserOverrideSourceTest {
         new UserOverrideSource(config, new StubHttpClient(archiveFile, false));
     
     NoticeSearchResult result = source.search(
-        createDep("log4j", "log4j", "1.2.17"), PATTERNS);
+        createDep("log4j", "log4j", "1.2.17"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("https://github.com/apache/logging-log4j1/archive/refs/tags/v1_2_17.tar.gz", 
@@ -308,7 +311,7 @@ class UserOverrideSourceTest {
         new UserOverrideSource(config, new StubHttpClient("NOTICE content", false));
     
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "3.5.7"), PATTERNS);
+        createDep("org.example", "lib", "3.5.7"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("https://example.com/v3/NOTICE", result.sourceUrl());
@@ -324,7 +327,7 @@ class UserOverrideSourceTest {
         new UserOverrideSource(config, new StubHttpClient("NOTICE content", false));
     
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "3.5.7"), PATTERNS);
+        createDep("org.example", "lib", "3.5.7"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("https://example.com/v3.5/NOTICE", result.sourceUrl());
@@ -340,7 +343,7 @@ class UserOverrideSourceTest {
         new UserOverrideSource(config, new StubHttpClient("NOTICE content", false));
     
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "2.1.0"), PATTERNS);
+        createDep("org.example", "lib", "2.1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("https://example.com/2.x/2.1.0/NOTICE", result.sourceUrl());
@@ -359,7 +362,7 @@ class UserOverrideSourceTest {
         new UserOverrideSource(config, new StubHttpClient((String) null, false));
     
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0.0"), PATTERNS, LICENSE_PATTERNS);
 
     // ユーザが明示的に指定したアーカイブなので、SOURCE_FOUND_NO_NOTICE を返すべき
     assertEquals(SearchOutcome.SOURCE_FOUND_NO_NOTICE, result.outcome());

@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * NOTICE 収集オーケストレータ。7段階の優先順位に従って {@link NoticeSource} を試行し、
+ * NOTICE/LICENSE 収集オーケストレータ。7段階の優先順位に従って {@link NoticeSource} を試行し、
  * 各依存関係に対する {@link CollectionResult} を生成する。
  *
  * <p>検索ロジック:
@@ -28,19 +28,24 @@ public class NoticeCollector {
   private static final Logger LOG = LoggerFactory.getLogger(NoticeCollector.class);
 
   private final List<NoticeSource> sources;
-  private final List<String> patterns;
+  private final List<String> noticePatterns;
+  private final List<String> licensePatterns;
 
   /**
    * NoticeCollector を構築する。
    *
    * @param sources NoticeSource 実装のリスト（優先順位でソートされる）
-   * @param patterns NOTICE 検索パターンリスト
+   * @param noticePatterns NOTICE 検索パターンリスト
+   * @param licensePatterns LICENSE 検索パターンリスト
    */
-  public NoticeCollector(List<NoticeSource> sources, List<String> patterns) {
+  public NoticeCollector(List<NoticeSource> sources,
+                         List<String> noticePatterns,
+                         List<String> licensePatterns) {
     this.sources = sources.stream()
         .sorted(Comparator.comparingInt(NoticeSource::getPriority))
         .toList();
-    this.patterns = List.copyOf(patterns);
+    this.noticePatterns = List.copyOf(noticePatterns);
+    this.licensePatterns = List.copyOf(licensePatterns);
   }
 
   /**
@@ -81,11 +86,11 @@ public class NoticeCollector {
       LOG.debug("ソース試行: {} (優先順位 {}) - {}", source.getSourceName(),
           source.getPriority(), gav);
 
-      NoticeSearchResult result = source.search(dep, patterns);
+      NoticeSearchResult result = source.search(dep, noticePatterns, licensePatterns);
 
       switch (result.outcome()) {
         case FOUND:
-          LOG.info("NOTICE 発見: {} からの取得 ({})", source.getSourceName(), gav);
+          LOG.info("NOTICE/LICENSE 発見: {} からの取得 ({})", source.getSourceName(), gav);
           return new CollectionResult(
               dependency,
               dep.spdxId(),
@@ -94,6 +99,8 @@ public class NoticeCollector {
               result.sourceUrl(),
               null,
               result.noticeContent(),
+              result.licenseContent(),
+              null,
               null);
 
         case SOURCE_FOUND_NO_NOTICE:
@@ -131,6 +138,8 @@ public class NoticeCollector {
           lastSourceUrl,
           null,
           null,
+          null,
+          null,
           null);
     }
 
@@ -139,6 +148,8 @@ public class NoticeCollector {
         dependency,
         dep.spdxId(),
         CollectionStatus.FAILED,
+        null,
+        null,
         null,
         null,
         null,
@@ -153,6 +164,8 @@ public class NoticeCollector {
         dep.dependency(),
         dep.spdxId(),
         CollectionStatus.UNKNOWN_LICENSE,
+        null,
+        null,
         null,
         null,
         null,

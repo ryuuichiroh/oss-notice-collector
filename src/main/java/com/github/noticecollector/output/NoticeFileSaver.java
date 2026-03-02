@@ -14,14 +14,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * SUCCESS の NOTICE ファイルを {@code output/notices/{groupId}/{artifactId}/{version}/NOTICE}
+ * SUCCESS の NOTICE / LICENSE ファイルを
+ * {@code output/legals/{groupId}/{artifactId}/{version}/NOTICE} および
+ * {@code output/legals/{groupId}/{artifactId}/{version}/LICENSE}
  * に保存する。ディレクトリが存在しない場合は自動作成する。
  */
 public class NoticeFileSaver {
 
   private static final Logger LOG = LoggerFactory.getLogger(NoticeFileSaver.class);
-  private static final String NOTICES_DIR = "notices";
+  private static final String NOTICES_DIR = "legals";
   private static final String NOTICE_FILE_NAME = "NOTICE";
+  private static final String LICENSE_FILE_NAME = "LICENSE";
 
   private final Path outputDirectory;
 
@@ -33,7 +36,7 @@ public class NoticeFileSaver {
   }
 
   /**
-   * SUCCESS の収集結果リストから NOTICE ファイルを保存する。
+   * SUCCESS の収集結果リストから NOTICE / LICENSE ファイルを保存する。
    *
    * @param results 収集結果リスト
    * @return 保存先パスが設定された更新済み CollectionResult リスト
@@ -43,16 +46,26 @@ public class NoticeFileSaver {
     Objects.requireNonNull(results, "results must not be null");
     List<CollectionResult> updated = new ArrayList<>(results.size());
     for (CollectionResult result : results) {
-      if (result.status() == CollectionStatus.SUCCESS && result.noticeContent() != null) {
-        Path saved = save(result);
+      if (result.status() == CollectionStatus.SUCCESS
+          && (result.noticeContent() != null || result.licenseContent() != null)) {
+        Path noticeSaved = null;
+        Path licenseSaved = null;
+        if (result.noticeContent() != null) {
+          noticeSaved = saveFile(result.dependency(), NOTICE_FILE_NAME, result.noticeContent());
+        }
+        if (result.licenseContent() != null) {
+          licenseSaved = saveFile(result.dependency(), LICENSE_FILE_NAME, result.licenseContent());
+        }
         updated.add(new CollectionResult(
             result.dependency(),
             result.spdxId(),
             result.status(),
             result.sourceName(),
             result.sourceUrl(),
-            saved,
+            noticeSaved,
             result.noticeContent(),
+            result.licenseContent(),
+            licenseSaved,
             result.failureReason()));
       } else {
         updated.add(result);
@@ -62,33 +75,39 @@ public class NoticeFileSaver {
   }
 
   /**
-   * 単一の収集結果の NOTICE ファイルを保存する。
+   * 指定ファイル名で内容を保存する。
    *
-   * @param result SUCCESS の収集結果
+   * @param dep 依存ライブラリ情報
+   * @param fileName 保存ファイル名（NOTICE または LICENSE）
+   * @param content ファイル内容
    * @return 保存先パス
    * @throws IOException ファイル書き込みに失敗した場合
    */
-  Path save(CollectionResult result) throws IOException {
-    Dependency dep = result.dependency();
-    Path noticePath = buildNoticePath(dep);
-    Path parentDir = noticePath.getParent();
+  Path saveFile(Dependency dep, String fileName, String content) throws IOException {
+    Path filePath = buildFilePath(dep, fileName);
+    Path parentDir = filePath.getParent();
     if (parentDir != null) {
       Files.createDirectories(parentDir);
     }
-    Files.writeString(noticePath, result.noticeContent(), StandardCharsets.UTF_8);
-    LOG.info("Saved NOTICE: {}", noticePath);
-    return noticePath;
+    Files.writeString(filePath, content, StandardCharsets.UTF_8);
+    LOG.info("Saved {}: {}", fileName, filePath);
+    return filePath;
   }
 
   /**
-   * 保存先パスを構築する: {@code {outputDirectory}/notices/{groupId}/{artifactId}/{version}/NOTICE}
+  * 保存先パスを構築する: {@code {outputDirectory}/legals/{groupId}/{artifactId}/{version}/{fileName}}
    */
-  Path buildNoticePath(Dependency dep) {
+  Path buildFilePath(Dependency dep, String fileName) {
     return outputDirectory
         .resolve(NOTICES_DIR)
         .resolve(dep.groupId())
         .resolve(dep.artifactId())
         .resolve(dep.version())
-        .resolve(NOTICE_FILE_NAME);
+        .resolve(fileName);
+  }
+
+  // 下位互換のため残す
+  Path buildNoticePath(Dependency dep) {
+    return buildFilePath(dep, NOTICE_FILE_NAME);
   }
 }

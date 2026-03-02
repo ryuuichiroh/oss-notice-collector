@@ -13,9 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * SUCCESS の全 NOTICE を連結し {@code THIRD-PARTY-NOTICES.txt} を生成する。
+ * SUCCESS の全 NOTICE / LICENSE を連結し {@code THIRD-PARTY-LEGAL.txt} を生成する。
  *
- * <p>各エントリにはヘッダ（artifactId、version、groupId、取得元 URL）と区切り線を付与する。
+ * <p>各エントリにはヘッダ（artifactId、version、groupId、license、取得元 URL）と区切り線を付与する。
+ * NOTICE と LICENSE の両方が存在する場合は {@code --- NOTICE ---} / {@code --- LICENSE ---}
+ * セクションに分けて出力する。
  */
 public class NoticeAggregator {
 
@@ -29,7 +31,7 @@ public class NoticeAggregator {
 
   /**
    * @param outputDirectory 出力ルートディレクトリ
-   * @param aggregatedFileName 集約ファイル名（例: {@code THIRD-PARTY-NOTICES.txt}）
+  * @param aggregatedFileName 集約ファイル名（例: {@code THIRD-PARTY-LEGAL.txt}）
    */
   public NoticeAggregator(Path outputDirectory, String aggregatedFileName) {
     this.outputDirectory =
@@ -62,7 +64,7 @@ public class NoticeAggregator {
     List<CollectionResult> successResults =
         results.stream()
             .filter(r -> r.status() == CollectionStatus.SUCCESS)
-            .filter(r -> r.noticeContent() != null)
+            .filter(r -> r.noticeContent() != null || r.licenseContent() != null)
             .toList();
 
     if (successResults.isEmpty()) {
@@ -82,16 +84,31 @@ public class NoticeAggregator {
 
   private void appendEntry(StringBuilder sb, CollectionResult result) {
     Dependency dep = result.dependency();
+    boolean hasNotice = result.noticeContent() != null;
+    boolean hasLicense = result.licenseContent() != null;
 
     sb.append(SEPARATOR).append(System.lineSeparator());
     sb.append("artifactId: ").append(dep.artifactId()).append(System.lineSeparator());
     sb.append("version: ").append(dep.version()).append(System.lineSeparator());
     sb.append("groupId: ").append(dep.groupId()).append(System.lineSeparator());
+    if (result.spdxId() != null) {
+      sb.append("license: ").append(result.spdxId()).append(System.lineSeparator());
+    }
     sb.append("sourceUrl: ").append(result.sourceUrl() != null ? result.sourceUrl() : "N/A");
     sb.append(System.lineSeparator());
     sb.append(SEPARATOR).append(System.lineSeparator());
     sb.append(System.lineSeparator());
-    sb.append(result.noticeContent());
-    sb.append(System.lineSeparator());
+
+    if (hasNotice && hasLicense) {
+      sb.append("--- NOTICE ---").append(System.lineSeparator());
+      sb.append(result.noticeContent()).append(System.lineSeparator());
+      sb.append(System.lineSeparator());
+      sb.append("--- LICENSE ---").append(System.lineSeparator());
+      sb.append(result.licenseContent()).append(System.lineSeparator());
+    } else if (hasNotice) {
+      sb.append(result.noticeContent()).append(System.lineSeparator());
+    } else {
+      sb.append(result.licenseContent()).append(System.lineSeparator());
+    }
   }
 }

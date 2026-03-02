@@ -75,13 +75,15 @@ public class ApacheArchiveSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     String gav = dependency.dependency().toGav();
 
     // 無効化チェック
     if (!config.isEnabled()) {
       LOG.debug("Apache Archive ソースは無効化されています: {}", gav);
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "Apache Archive ソースは無効化されています");
     }
 
@@ -89,7 +91,7 @@ public class ApacheArchiveSource implements NoticeSource {
     Optional<ArchiveMappingConfig> mapping = findMapping(dependency);
     if (mapping.isEmpty()) {
       LOG.debug("Apache Archive マッピングに未登録: {}", gav);
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "Apache Archive マッピングテーブルに未登録です");
     }
 
@@ -97,7 +99,7 @@ public class ApacheArchiveSource implements NoticeSource {
     String version = dependency.dependency().version();
     String directoryUrl = buildDirectoryUrl(archivePath, version);
 
-    return searchInDirectory(directoryUrl, dependency, patterns);
+    return searchInDirectory(directoryUrl, dependency, noticePatterns, licensePatterns);
   }
 
   @Override
@@ -144,7 +146,8 @@ public class ApacheArchiveSource implements NoticeSource {
    * ディレクトリリスティングを取得し、ソースアーカイブを検索・ダウンロード・NOTICE 抽出する。
    */
   private NoticeSearchResult searchInDirectory(String directoryUrl,
-      LicensedDependency dependency, List<String> patterns) {
+      LicensedDependency dependency, List<String> noticePatterns,
+      List<String> licensePatterns) {
     String gav = dependency.dependency().toGav();
 
     try {
@@ -154,7 +157,7 @@ public class ApacheArchiveSource implements NoticeSource {
       if (archiveLinks.isEmpty()) {
         LOG.debug("Apache Archive ディレクトリにソースアーカイブなし: {} ({})",
             directoryUrl, gav);
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, directoryUrl,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, directoryUrl,
             "Apache Archive ディレクトリにソースアーカイブが見つかりません");
       }
 
@@ -162,7 +165,8 @@ public class ApacheArchiveSource implements NoticeSource {
       NoticeSearchResult lastSourceFound = null;
       for (String archiveLink : archiveLinks) {
         String archiveUrl = directoryUrl + archiveLink;
-        NoticeSearchResult result = tryArchive(archiveUrl, archiveLink, patterns, gav);
+        NoticeSearchResult result = tryArchive(archiveUrl, archiveLink,
+            noticePatterns, licensePatterns, gav);
 
         if (result.outcome() == SearchOutcome.FOUND) {
           return result;
@@ -176,17 +180,17 @@ public class ApacheArchiveSource implements NoticeSource {
         return lastSourceFound;
       }
 
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, directoryUrl,
-          "Apache Archive のソースアーカイブから NOTICE が見つかりません");
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, directoryUrl,
+          "Apache Archive のソースアーカイブから NOTICE/LICENSE が見つかりません");
 
     } catch (HttpRequestException e) {
       LOG.debug("Apache Archive ディレクトリ取得失敗: {} ({}) - {}",
           directoryUrl, gav, e.getMessage());
       if (e.getStatusCode() == 404) {
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, directoryUrl,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, directoryUrl,
             "Apache Archive にディレクトリが存在しません");
       }
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, directoryUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, directoryUrl,
           "Apache Archive ディレクトリ取得エラー: " + e.getMessage());
     }
   }
@@ -198,14 +202,14 @@ public class ApacheArchiveSource implements NoticeSource {
    * 超過する場合はスキップする。
    */
   private NoticeSearchResult tryArchive(String archiveUrl, String fileName,
-      List<String> patterns, String gav) {
+      List<String> noticePatterns, List<String> licensePatterns, String gav) {
     // サイズチェック
     long maxBytes = (long) config.getMaxDownloadSizeMb() * 1024 * 1024;
     long contentLength = httpClient.getContentLength(archiveUrl);
     if (contentLength > maxBytes) {
       LOG.warn("Apache Archive サイズ超過: {} ({} bytes > {} MB) ({})",
           archiveUrl, contentLength, config.getMaxDownloadSizeMb(), gav);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, archiveUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, archiveUrl,
           "アーカイブサイズ超過 (" + contentLength + " bytes > "
               + config.getMaxDownloadSizeMb() + " MB)");
     }
@@ -217,29 +221,34 @@ public class ApacheArchiveSource implements NoticeSource {
       tempFile = Files.createTempFile("notice-apache-", suffix);
       Files.write(tempFile, archiveBytes);
 
-      Optional<String> content = extractNotice(tempFile, fileName, patterns);
-      if (content.isPresent()) {
-        LOG.info("Apache Archive から NOTICE を発見: {} ({})", archiveUrl, gav);
-        return new NoticeSearchResult(SearchOutcome.FOUND, content.get(), archiveUrl, null);
+      Optional<String> noticeContent = extractContent(tempFile, fileName, noticePatterns);
+      Optional<String> licenseContent = extractContent(tempFile, fileName, licensePatterns);
+
+      if (noticeContent.isPresent() || licenseContent.isPresent()) {
+        LOG.info("Apache Archive から NOTICE/LICENSE を発見: {} ({})", archiveUrl, gav);
+        return new NoticeSearchResult(SearchOutcome.FOUND,
+            noticeContent.orElse(null),
+            licenseContent.orElse(null),
+            archiveUrl, null);
       }
 
-      LOG.debug("Apache Archive のアーカイブに NOTICE なし: {} ({})", archiveUrl, gav);
-      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, archiveUrl,
-          "Apache Archive のアーカイブに NOTICE が含まれていません");
+      LOG.debug("Apache Archive のアーカイブに NOTICE/LICENSE なし: {} ({})", archiveUrl, gav);
+      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null, archiveUrl,
+          "Apache Archive のアーカイブに NOTICE/LICENSE が含まれていません");
 
     } catch (HttpRequestException e) {
       LOG.debug("Apache Archive アーカイブ取得失敗: {} ({}) - {}",
           archiveUrl, gav, e.getMessage());
       if (e.getStatusCode() == 404) {
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, archiveUrl,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, archiveUrl,
             "Apache Archive にアーカイブが存在しません");
       }
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, archiveUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, archiveUrl,
           "Apache Archive アーカイブ取得エラー: " + e.getMessage());
 
     } catch (IOException e) {
       LOG.warn("Apache Archive アーカイブ処理に失敗: {} ({})", archiveUrl, gav, e);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, archiveUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, archiveUrl,
           "アーカイブ処理エラー: " + e.getMessage());
 
     } finally {
@@ -248,15 +257,15 @@ public class ApacheArchiveSource implements NoticeSource {
   }
 
   /**
-   * アーカイブファイルから NOTICE を抽出する。ファイル名に基づいて適切な抽出方法を選択する。
+   * アーカイブファイルからコンテンツを抽出する。ファイル名に基づいて適切な抽出方法を選択する。
    *
    * @param tempFile ダウンロードしたアーカイブの一時ファイル
    * @param fileName 元のファイル名（拡張子判定用）
-   * @param patterns NOTICE 検索パターンリスト
-   * @return 見つかった NOTICE の内容
+   * @param patterns 検索パターンリスト
+   * @return 見つかったコンテンツ
    * @throws IOException 抽出に失敗した場合
    */
-  private Optional<String> extractNotice(Path tempFile, String fileName, List<String> patterns)
+  private Optional<String> extractContent(Path tempFile, String fileName, List<String> patterns)
       throws IOException {
     String lowerName = fileName.toLowerCase();
     if (lowerName.endsWith(".jar")) {

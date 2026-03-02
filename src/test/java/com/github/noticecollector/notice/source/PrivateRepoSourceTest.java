@@ -28,6 +28,9 @@ class PrivateRepoSourceTest {
   private static final List<String> PATTERNS =
       List.of("META-INF/NOTICE", "META-INF/NOTICE.txt", "NOTICE");
 
+  private static final List<String> LICENSE_PATTERNS =
+      List.of("META-INF/LICENSE", "META-INF/LICENSE.txt", "LICENSE");
+
   private LicensedDependency createDep(String groupId, String artifactId, String version) {
     return new LicensedDependency(
         new Dependency(groupId, artifactId, version, "compile", "jar"),
@@ -100,7 +103,7 @@ class PrivateRepoSourceTest {
     PrivateRepoSource source = new PrivateRepoSource(config,
         new StubHttpClient(null, null));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
   }
@@ -120,7 +123,7 @@ class PrivateRepoSourceTest {
     PrivateRepoSource source = new PrivateRepoSource(config,
         new StubHttpClient(responses, null));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Private repo NOTICE", result.noticeContent());
@@ -142,7 +145,7 @@ class PrivateRepoSourceTest {
     PrivateRepoSource source = new PrivateRepoSource(config,
         new StubHttpClient(responses, null));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "no-notice", "1.0"), PATTERNS);
+        createDep("org.example", "no-notice", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.SOURCE_FOUND_NO_NOTICE, result.outcome());
     assertNull(result.noticeContent());
@@ -159,7 +162,7 @@ class PrivateRepoSourceTest {
     PrivateRepoSource source = new PrivateRepoSource(config,
         new StubHttpClient(null, errors));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "missing", "1.0"), PATTERNS);
+        createDep("org.example", "missing", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.NOT_FOUND, result.outcome());
   }
@@ -187,7 +190,7 @@ class PrivateRepoSourceTest {
     PrivateRepoSource source = new PrivateRepoSource(config,
         new StubHttpClient(responses, errors));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "lib", "1.0"), PATTERNS);
+        createDep("org.example", "lib", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.FOUND, result.outcome());
     assertEquals("Second repo NOTICE", result.noticeContent());
@@ -205,7 +208,7 @@ class PrivateRepoSourceTest {
     PrivateRepoSource source = new PrivateRepoSource(config,
         new StubHttpClient(null, errors));
     NoticeSearchResult result = source.search(
-        createDep("org.example", "error", "1.0"), PATTERNS);
+        createDep("org.example", "error", "1.0"), PATTERNS, LICENSE_PATTERNS);
 
     assertEquals(SearchOutcome.ERROR, result.outcome());
     assertNotNull(result.message());

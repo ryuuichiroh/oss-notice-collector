@@ -116,7 +116,7 @@ output:
 |---|---|
 | `output/notices/{groupId}/{artifactId}/{version}/NOTICE` | 依存関係ごとの NOTICE ファイル |
 | `output/collection-report.json` | 収集結果の JSON レポート（サマリ＋詳細） |
-| `output/THIRD-PARTY-NOTICES.txt` | 全 NOTICE を連結した集約ファイル |
+| `output/THIRD-PARTY-LEGAL.txt` | 全 NOTICE / LICENSE を連結した集約ファイル |
 
 ## NOTICE 検索の優先順位
 

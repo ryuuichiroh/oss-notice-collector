@@ -55,9 +55,11 @@ public class PrivateRepoSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     if (repositories == null || repositories.isEmpty()) {
-      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+      return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
           "社内リポジトリが設定されていません");
     }
 
@@ -71,7 +73,8 @@ public class PrivateRepoSource implements NoticeSource {
       }
 
       String sourceJarUrl = buildSourceJarUrl(repo.getUrl(), dependency);
-      NoticeSearchResult result = tryRepository(sourceJarUrl, dependency, patterns, repo.getName());
+      NoticeSearchResult result = tryRepository(sourceJarUrl, dependency,
+          noticePatterns, licensePatterns, repo.getName());
 
       if (result.outcome() == SearchOutcome.FOUND) {
         return result;
@@ -92,7 +95,7 @@ public class PrivateRepoSource implements NoticeSource {
     }
 
     LOG.debug("全社内リポジトリでソース JAR が見つかりません: {}", gav);
-    return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null,
+    return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, null,
         "全社内リポジトリでソース JAR が見つかりません");
   }
 
@@ -110,7 +113,8 @@ public class PrivateRepoSource implements NoticeSource {
    * 社内リポジトリからソース JAR のダウンロードと NOTICE 抽出を試みる。
    */
   private NoticeSearchResult tryRepository(String sourceJarUrl,
-      LicensedDependency dependency, List<String> patterns, String repoName) {
+      LicensedDependency dependency, List<String> noticePatterns,
+      List<String> licensePatterns, String repoName) {
     String gav = dependency.dependency().toGav();
     Path tempJar = null;
 
@@ -119,32 +123,37 @@ public class PrivateRepoSource implements NoticeSource {
       tempJar = Files.createTempFile("notice-private-src-", ".jar");
       Files.write(tempJar, jarBytes);
 
-      Optional<String> content = jarExtractor.extract(tempJar, patterns);
-      if (content.isPresent()) {
-        LOG.info("社内リポジトリ [{}] のソース JAR から NOTICE を発見: {} ({})",
+      Optional<String> noticeContent = jarExtractor.extract(tempJar, noticePatterns);
+      Optional<String> licenseContent = jarExtractor.extract(tempJar, licensePatterns);
+
+      if (noticeContent.isPresent() || licenseContent.isPresent()) {
+        LOG.info("社内リポジトリ [{}] のソース JAR から NOTICE/LICENSE を発見: {} ({})",
             repoName, sourceJarUrl, gav);
-        return new NoticeSearchResult(SearchOutcome.FOUND, content.get(), sourceJarUrl, null);
+        return new NoticeSearchResult(SearchOutcome.FOUND,
+            noticeContent.orElse(null),
+            licenseContent.orElse(null),
+            sourceJarUrl, null);
       }
 
-      LOG.debug("社内リポジトリ [{}] のソース JAR に NOTICE なし: {} ({})",
+      LOG.debug("社内リポジトリ [{}] のソース JAR に NOTICE/LICENSE なし: {} ({})",
           repoName, sourceJarUrl, gav);
-      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, sourceJarUrl,
-          "社内リポジトリ [" + repoName + "] のソース JAR に NOTICE が含まれていません");
+      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null, sourceJarUrl,
+          "社内リポジトリ [" + repoName + "] のソース JAR に NOTICE/LICENSE が含まれていません");
 
     } catch (HttpRequestException e) {
       LOG.debug("社内リポジトリ [{}] からソース JAR 取得失敗: {} ({}) - {}",
           repoName, sourceJarUrl, gav, e.getMessage());
       if (e.getStatusCode() == 404) {
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, sourceJarUrl,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, sourceJarUrl,
             "社内リポジトリ [" + repoName + "] にソース JAR が存在しません");
       }
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, sourceJarUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, sourceJarUrl,
           "社内リポジトリ [" + repoName + "] ソース JAR 取得エラー: " + e.getMessage());
 
     } catch (IOException e) {
       LOG.warn("社内リポジトリ [{}] のソース JAR 処理に失敗: {} ({})",
           repoName, sourceJarUrl, gav, e);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, sourceJarUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, sourceJarUrl,
           "ソース JAR 処理エラー: " + e.getMessage());
 
     } finally {

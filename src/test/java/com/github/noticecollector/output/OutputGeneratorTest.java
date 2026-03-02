@@ -25,7 +25,7 @@ class OutputGeneratorTest {
   void generateOutput_savesNoticesAndGeneratesReportAndAggregated() throws Exception {
     NoticeFileSaver saver = new NoticeFileSaver(tempDir);
     ReportGenerator reporter = new ReportGenerator(tempDir, "collection-report.json");
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     OutputGenerator generator = new OutputGenerator(saver, reporter, aggregator);
 
     Dependency d1 = dep("org.example", "lib-a", "1.0.0");
@@ -33,9 +33,9 @@ class OutputGeneratorTest {
 
     List<CollectionResult> results = List.of(
         new CollectionResult(d1, "Apache-2.0", CollectionStatus.SUCCESS,
-            "MAVEN_CENTRAL", "https://repo1.maven.org", null, "Notice A content", null),
+            "MAVEN_CENTRAL", "https://repo1.maven.org", null, "Notice A content", null, null, null),
         new CollectionResult(d2, "Apache-2.0", CollectionStatus.FAILED,
-            null, null, null, null, "Not found in any source"));
+            null, null, null, null, null, null, "Not found in any source"));
 
     List<LicensedDependency> allDeps = List.of(
         new LicensedDependency(d1, "Apache-2.0", "Apache License 2.0", null, "POM"),
@@ -44,7 +44,7 @@ class OutputGeneratorTest {
     generator.generateOutput(results, allDeps, null);
 
     // Individual NOTICE saved
-    Path noticePath = tempDir.resolve("notices/org.example/lib-a/1.0.0/NOTICE");
+    Path noticePath = tempDir.resolve("legals/org.example/lib-a/1.0.0/NOTICE");
     assertTrue(Files.exists(noticePath));
     assertEquals("Notice A content", Files.readString(noticePath));
 
@@ -52,7 +52,7 @@ class OutputGeneratorTest {
     assertTrue(Files.exists(tempDir.resolve("collection-report.json")));
 
     // Aggregated NOTICE generated
-    Path aggregatedPath = tempDir.resolve("THIRD-PARTY-NOTICES.txt");
+    Path aggregatedPath = tempDir.resolve("THIRD-PARTY-LEGAL.txt");
     assertTrue(Files.exists(aggregatedPath));
     String aggregated = Files.readString(aggregatedPath);
     assertTrue(aggregated.contains("lib-a"));
@@ -63,13 +63,13 @@ class OutputGeneratorTest {
   void generateOutput_emptyResults_generatesEmptyOutputs() throws Exception {
     NoticeFileSaver saver = new NoticeFileSaver(tempDir);
     ReportGenerator reporter = new ReportGenerator(tempDir, "collection-report.json");
-    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-NOTICES.txt");
+    NoticeAggregator aggregator = new NoticeAggregator(tempDir, "THIRD-PARTY-LEGAL.txt");
     OutputGenerator generator = new OutputGenerator(saver, reporter, aggregator);
 
     generator.generateOutput(List.of(), List.of(), null);
 
     assertTrue(Files.exists(tempDir.resolve("collection-report.json")));
-    assertTrue(Files.exists(tempDir.resolve("THIRD-PARTY-NOTICES.txt")));
+    assertTrue(Files.exists(tempDir.resolve("THIRD-PARTY-LEGAL.txt")));
   }
 
   @Test

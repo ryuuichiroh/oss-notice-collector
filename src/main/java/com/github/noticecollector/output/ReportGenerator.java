@@ -84,8 +84,8 @@ public class ReportGenerator {
         results.stream().filter(r -> r.status() == CollectionStatus.FAILED).count();
     long unknownLicenseCount =
         results.stream().filter(r -> r.status() == CollectionStatus.UNKNOWN_LICENSE).count();
-    long notApache2Count =
-        results.stream().filter(r -> r.status() == CollectionStatus.NOT_APACHE_2_0).count();
+    long notTargetLicenseCount =
+        results.stream().filter(r -> r.status() == CollectionStatus.NOT_TARGET_LICENSE).count();
 
     return new Summary(
         totalDependencies,
@@ -94,7 +94,7 @@ public class ReportGenerator {
         (int) notRequiredCount,
         (int) failedCount,
         (int) unknownLicenseCount,
-        (int) notApache2Count);
+        (int) notTargetLicenseCount);
   }
 
   private static ResultEntry toEntry(CollectionResult result) {
@@ -106,7 +106,8 @@ public class ReportGenerator {
         result.status().name(),
         result.sourceName(),
         result.sourceUrl(),
-        result.savedPath() != null ? result.savedPath().toString() : null,
+        result.noticeSavedPath() != null ? result.noticeSavedPath().toString() : null,
+        result.licenseSavedPath() != null ? result.licenseSavedPath().toString() : null,
         result.failureReason(),
         result.status() == CollectionStatus.NOT_REQUIRED ? result.sourceUrl() : null,
         result.status() == CollectionStatus.NOT_REQUIRED ? buildNotRequiredReason(result) : null);
@@ -131,7 +132,7 @@ public class ReportGenerator {
       @JsonProperty("notRequiredCount") int notRequiredCount,
       @JsonProperty("failedCount") int failedCount,
       @JsonProperty("unknownLicenseCount") int unknownLicenseCount,
-      @JsonProperty("notApache2Count") int notApache2Count) {}
+      @JsonProperty("notTargetLicenseCount") int notTargetLicenseCount) {}
 
   /** 個別の収集結果エントリ。 */
   @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -143,7 +144,8 @@ public class ReportGenerator {
       @JsonProperty("status") String status,
       @JsonProperty("sourceName") String sourceName,
       @JsonProperty("sourceUrl") String sourceUrl,
-      @JsonProperty("savedPath") String savedPath,
+      @JsonProperty("noticeSavedPath") String noticeSavedPath,
+      @JsonProperty("licenseSavedPath") String licenseSavedPath,
       @JsonProperty("failureReason") String failureReason,
       @JsonProperty("notRequiredSourceUrl") String notRequiredSourceUrl,
       @JsonProperty("notRequiredReason") String notRequiredReason) {}

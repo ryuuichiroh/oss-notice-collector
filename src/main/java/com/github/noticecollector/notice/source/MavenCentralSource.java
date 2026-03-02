@@ -51,7 +51,9 @@ public class MavenCentralSource implements NoticeSource {
   }
 
   @Override
-  public NoticeSearchResult search(LicensedDependency dependency, List<String> patterns) {
+  public NoticeSearchResult search(LicensedDependency dependency,
+                                   List<String> noticePatterns,
+                                   List<String> licensePatterns) {
     String gav = dependency.dependency().toGav();
     String sourceJarUrl = buildSourceJarUrl(dependency);
 
@@ -62,29 +64,34 @@ public class MavenCentralSource implements NoticeSource {
       tempJar = Files.createTempFile("notice-src-", ".jar");
       Files.write(tempJar, jarBytes);
 
-      Optional<String> content = jarExtractor.extract(tempJar, patterns);
-      if (content.isPresent()) {
-        LOG.info("Maven Central ソース JAR から NOTICE を発見: {} ({})", sourceJarUrl, gav);
-        return new NoticeSearchResult(SearchOutcome.FOUND, content.get(), sourceJarUrl, null);
+      Optional<String> noticeContent = jarExtractor.extract(tempJar, noticePatterns);
+      Optional<String> licenseContent = jarExtractor.extract(tempJar, licensePatterns);
+
+      if (noticeContent.isPresent() || licenseContent.isPresent()) {
+        LOG.info("Maven Central ソース JAR から NOTICE/LICENSE を発見: {} ({})", sourceJarUrl, gav);
+        return new NoticeSearchResult(SearchOutcome.FOUND,
+            noticeContent.orElse(null),
+            licenseContent.orElse(null),
+            sourceJarUrl, null);
       }
 
-      LOG.debug("Maven Central ソース JAR に NOTICE なし: {} ({})", sourceJarUrl, gav);
-      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, sourceJarUrl,
-          "Maven Central ソース JAR に NOTICE が含まれていません");
+      LOG.debug("Maven Central ソース JAR に NOTICE/LICENSE なし: {} ({})", sourceJarUrl, gav);
+      return new NoticeSearchResult(SearchOutcome.SOURCE_FOUND_NO_NOTICE, null, null, sourceJarUrl,
+          "Maven Central ソース JAR に NOTICE/LICENSE が含まれていません");
 
     } catch (HttpRequestException e) {
       LOG.debug("Maven Central ソース JAR の取得に失敗: {} ({}) - {}", sourceJarUrl, gav,
           e.getMessage());
       if (e.getStatusCode() == 404) {
-        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, sourceJarUrl,
+        return new NoticeSearchResult(SearchOutcome.NOT_FOUND, null, null, sourceJarUrl,
             "Maven Central にソース JAR が存在しません");
       }
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, sourceJarUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, sourceJarUrl,
           "Maven Central ソース JAR 取得エラー: " + e.getMessage());
 
     } catch (IOException e) {
       LOG.warn("Maven Central ソース JAR の処理に失敗: {} ({})", sourceJarUrl, gav, e);
-      return new NoticeSearchResult(SearchOutcome.ERROR, null, sourceJarUrl,
+      return new NoticeSearchResult(SearchOutcome.ERROR, null, null, sourceJarUrl,
           "ソース JAR 処理エラー: " + e.getMessage());
 
     } finally {
