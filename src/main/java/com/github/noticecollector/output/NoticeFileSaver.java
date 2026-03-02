@@ -15,14 +15,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * SUCCESS の NOTICE / LICENSE ファイルを
- * {@code output/legals/{groupId}/{artifactId}/{version}/NOTICE} および
- * {@code output/legals/{groupId}/{artifactId}/{version}/LICENSE}
+ * {@code output/legal/{groupId}/{artifactId}/{version}/NOTICE} および
+ * {@code output/legal/{groupId}/{artifactId}/{version}/LICENSE}
  * に保存する。ディレクトリが存在しない場合は自動作成する。
  */
 public class NoticeFileSaver {
 
   private static final Logger LOG = LoggerFactory.getLogger(NoticeFileSaver.class);
-  private static final String NOTICES_DIR = "legals";
+  private static final String NOTICES_DIR = "legal";
   private static final String NOTICE_FILE_NAME = "NOTICE";
   private static final String LICENSE_FILE_NAME = "LICENSE";
 
@@ -95,7 +95,7 @@ public class NoticeFileSaver {
   }
 
   /**
-  * 保存先パスを構築する: {@code {outputDirectory}/legals/{groupId}/{artifactId}/{version}/{fileName}}
+   * 保存先パスを構築する: {@code {outputDirectory}/legal/{groupId}/{artifactId}/{version}/{fileName}}
    */
   Path buildFilePath(Dependency dep, String fileName) {
     return outputDirectory

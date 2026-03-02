@@ -44,7 +44,7 @@ class OutputGeneratorTest {
     generator.generateOutput(results, allDeps, null);
 
     // Individual NOTICE saved
-    Path noticePath = tempDir.resolve("legals/org.example/lib-a/1.0.0/NOTICE");
+    Path noticePath = tempDir.resolve("legal/org.example/lib-a/1.0.0/NOTICE");
     assertTrue(Files.exists(noticePath));
     assertEquals("Notice A content", Files.readString(noticePath));
 
